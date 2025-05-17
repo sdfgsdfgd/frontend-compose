@@ -1,0 +1,48 @@
+[versions]
+compose-plugin = "1.6.10"
+junit = "4.13.2"
+kotlin = "2.0.0"
+ktor = "2.3.11"
+logback = "1.5.6"
+exoplayer = "1.1.0"
+coil = "2.6.0"
+antlrKotlinVersion = "1.0.0-RC4"
+treesitter = "0.24.0"
+
+# ==========================================================
+
+[plugins]
+jetbrainsCompose = { id = "org.jetbrains.compose", version.ref = "compose-plugin" }
+compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+kotlinJvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+ktor = { id = "io.ktor.plugin", version.ref = "ktor" }
+kotlinMultiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
+antlr-plugin = { id = "com.strumenta.antlr-kotlin", version.ref = "antlrKotlinVersion" }
+tree-sitter-kotlin = { id = "io.github.tree-sitter.ktreesitter-plugin", version.ref = "treesitter" }
+
+# ==========================================================
+
+[libraries]
+# ---[ ANTLR ]---
+antlr-core = { module = "com.strumenta:antlr-kotlin-runtime", version.ref = "antlrKotlinVersion" }
+
+# ---[ Video ]---
+exoplayer-core = { module = "androidx.media3:media3-exoplayer", version.ref = "exoplayer" }
+exoplayer-dash = { module = "androidx.media3:media3-exoplayer-dash", version.ref = "exoplayer" }
+exoplayer-ui = { module = "androidx.media3:media3-ui", version.ref = "exoplayer" }
+
+# ---[ Img / gif ]---
+coil-core = { module = "io.coil-kt:coil", version.ref = "coil" }
+coil-compose = { module = "io.coil-kt:coil-compose", version.ref = "coil" }
+coil-gif = { module = "io.coil-kt:coil-gif", version.ref = "coil" }
+
+# ---[ Ktor ]---
+logback = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
+ktor-server-core = { module = "io.ktor:ktor-server-core-jvm", version.ref = "ktor" }
+ktor-server-netty = { module = "io.ktor:ktor-server-netty-jvm", version.ref = "ktor" }
+ktor-server-tests = { module = "io.ktor:ktor-server-tests-jvm", version.ref = "ktor" }
+
+# ---[ Testing ]---
+kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
+junit = { group = "junit", name = "junit", version.ref = "junit" }
+kotlin-test-junit = { module = "org.jetbrains.kotlin:kotlin-test-junit", version.ref = "kotlin" }
