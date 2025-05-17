@@ -1,35 +1,39 @@
-rootProject.name = "kaangpt_kotlin"
-enableFeaturePreview("TYPESAFE_PROJECT_ACCESSORS")
+rootProject.name = "frontend-compose"
 
 pluginManagement {
     repositories {
-        google {
-            mavenContent {
-                includeGroupAndSubgroups("androidx")
-                includeGroupAndSubgroups("com.android")
-                includeGroupAndSubgroups("com.google")
-            }
-        }
-        mavenCentral()
+        google()
         gradlePluginPortal()
-        maven("https://maven.pkg.jetbrains.space/public/p/compose/dev")
+        mavenCentral()
     }
 }
 
 dependencyResolutionManagement {
     repositories {
-        google {
-            mavenContent {
-                includeGroupAndSubgroups("androidx")
-                includeGroupAndSubgroups("com.android")
-                includeGroupAndSubgroups("com.google")
-            }
-        }
+        google()
         mavenCentral()
-        maven("https://maven.pkg.jetbrains.space/public/p/compose/dev")
     }
 }
 
-include(":composeApp")
-include(":server")
 include(":shared")
+//include(":desktop")
+//include(":android")
+include(":ios")
+
+//
+// xx Where we are going
+//
+// settings.gradle.kts
+// ├── :shared         ← KMP, owns ALL logic + shared resources
+// ├── :androidApp     ← Android + Compose
+// ├── :desktopApp     ← Compose-Desktop JVM
+// └── :iosApp         ← dumb wrapper Xcode project (Gradle only builds KMP framework)
+//
+//
+// xx Inside shared/ only:
+//
+// src/commonMain/kotlin/**         <— every multiplatform class
+// src/commonMain/resources/**      <— earth.webp, strings, etc.
+// src/androidMain/kotlin/**
+// src/desktopMain/kotlin/**
+// src/iosMain/kotlin/**

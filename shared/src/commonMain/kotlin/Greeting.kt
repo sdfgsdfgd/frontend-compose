@@ -1,3 +1,5 @@
+package net.sdfgsdfg
+
 class Greeting {
     private val platform = getPlatform()
 
