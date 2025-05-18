@@ -1,99 +1,74 @@
-// shared/src/commonMain/kotlin/net/sdfgsdfg/MainScreen.kt
 package net.sdfgsdfg
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.layout.*
-import androidx.compose.material.*
-import androidx.compose.runtime.*
-import androidx.compose.ui.*
-import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.material.MaterialTheme
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.unit.*
+import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.max
+import androidx.constraintlayout.compose.ConstraintLayout
+import androidx.constraintlayout.compose.Dimension
+import net.sdfgsdfg.platform.Video
 import net.sdfgsdfg.platform.WindowMetrics
 import net.sdfgsdfg.resources.Res
-import net.sdfgsdfg.resources.compose_multiplatform
-import org.jetbrains.compose.resources.painterResource
+import net.sdfgsdfg.resources.earth
+import net.sdfgsdfg.ui.home.GapFadeStrip
+import net.sdfgsdfg.ui.home.temporaryOverlays
+import net.sdfgsdfg.ui.home.videoVignette
 
-/**
- * All formerly-desktop-only UI now lives here.
- *
- * The only things injected from the platform are:
- *   • [video] – the actual video composable
- *   • [metrics] – current window/screen size
- */
 @Composable
 fun MainScreen(
-    metrics : WindowMetrics,
-    video   : @Composable () -> Unit,
+    metrics: WindowMetrics,
+    autoPlay: Boolean = true
 ) {
-    // ------- debugging identical to the old App.kt ----------
-    println(
-        """
-        Desktop size                 : ${metrics.pixels}
-        desktopWidth / Height (dp)   : ${metrics.sizeDp}
-        density                      : ${metrics.density}
-        ----------------------------------------------
-        """.trimIndent()
-    )
-    //----------------------------------------------------------
+    val winHeightDp = (metrics.sizeDp.height.takeIf { it > 0.dp }
+        ?: LocalWindowInfo.current.containerSize.height.dp)
 
     val videoHeight = 500.dp
-    val videoTopY   = max(0.dp, metrics.sizeDp.height - videoHeight)
-
-    var showContent  by remember { mutableStateOf(false) }
-    var showSettings by remember { mutableStateOf(false) }
+    val gapHeight = max(0.dp, winHeightDp - videoHeight)
+    println("[ kaankaan ] -------> gapHeight: [ $gapHeight ] ------- winHeightDp [ $winHeightDp ] ------ videoHeight [ $videoHeight ]")
 
     MaterialTheme {
-        Box(Modifier.fillMaxSize()) {
+        ConstraintLayout(Modifier.fillMaxSize()) {
+            val (video, gradient) = createRefs()
 
-            /*  top gradient strip  --------------------------------- */
+            // —————————————————  VIDEO  ——————————————————————————————
             Box(
-                Modifier
-                    .fillMaxWidth()
-                    .height(videoTopY)
-                    .topGradientOverlay(videoTopY, LocalDensity.current)
-            )
+                modifier = Modifier.constrainAs(video) {
+                    bottom.linkTo(parent.bottom)
+                    start.linkTo(parent.start)
+                    end.linkTo(parent.end)
+                }.fillMaxWidth()
+                    .height(videoHeight)
+                    .videoVignette()
+            ) {
+                Video(
+                    source = Res.drawable.earth,
+                    modifier = Modifier.fillMaxSize(),
+                    autoPlay = autoPlay
+                )
+            }
 
-            /*  video area supplied by the platform  ---------------- */
+            // —————————————————  GRADIENT  ——————————————————————————
             Box(
-                Modifier
-                    .fillMaxWidth()
-                    .height(600.dp)
-                    .innerShadow()
-                    .align(Alignment.BottomCenter)
-            ) { video() }
-
-            /*  overlay controls  ----------------------------------- */
-            Box(Modifier.matchParentSize(), contentAlignment = Alignment.TopCenter) {
-                Column(Modifier.padding(top = 20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-
-                    Button(onClick = { showContent = !showContent }) { Text("Click me!") }
-
-                    AnimatedVisibility(
-                        visible = showContent,
-                        enter   = fadeIn() + expandVertically()
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Image(
-                                painterResource(Res.drawable.compose_multiplatform),
-                                contentDescription = null
-                            )
-                            Text(
-                                "placeholder",
-                                color      = Color.DarkGray,
-                                fontSize   = 48.sp,
-                                fontFamily = FontFamily.Cursive
-                            )
-                        }
-                    }
-
-                    Button(onClick = { showSettings = !showSettings }) { Text("Settings") }
-                }
+                modifier = Modifier.constrainAs(gradient) {
+                    top.linkTo(parent.top)
+                    bottom.linkTo(video.top)          // bottom flush with video’s top edge
+                    start.linkTo(parent.start)
+                    end.linkTo(parent.end)
+                    height = Dimension.fillToConstraints   // stretch to cover the whole gap
+                }.fillMaxWidth()
+            ) {
+                GapFadeStrip(blurRadius = 12.dp)
             }
         }
+
+        temporaryOverlays()
     }
 }
+

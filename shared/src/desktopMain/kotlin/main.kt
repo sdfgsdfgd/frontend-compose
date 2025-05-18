@@ -11,7 +11,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
@@ -23,9 +22,10 @@ import androidx.compose.ui.window.WindowState
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import net.sdfgsdfg.platform.LocalWindowMetrics
+import net.sdfgsdfg.platform.Video
 import net.sdfgsdfg.platform.rememberWindowMetrics
-import utils.Progress
-import utils.Video
+import net.sdfgsdfg.resources.Res
+import net.sdfgsdfg.resources.earth
 import java.awt.Toolkit
 
 fun main() = application {
@@ -50,28 +50,13 @@ fun main() = application {
             DraggableWindow(windowState) {
                 MainScreen(
                     metrics = LocalWindowMetrics.current,
-                    video = {
-                        /* reuse your utils.Video composable */
-                        Video(
-                            url = "file:////Users/x/Desktop/earth.mp4",
-                            isResumed = true,
-                            volume = 1f,
-                            speed = 1f,
-                            seek = 0f,
-                            isFullscreen = false,
-                            progressState = remember { mutableStateOf(Progress(0f, 100L)) },
-                            modifier = Modifier.fillMaxSize(),
-                            onFinish = {}
-                        )
-                    }
+                    autoPlay = true
                 )
             }
         }
     }
 }
 
-/* keeps your drag-to-move behaviour */
-@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 private fun DraggableWindow(
     state: WindowState,

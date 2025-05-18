@@ -8,6 +8,10 @@ plugins {
 }
 
 kotlin {
+    // iosMain (and the other aggregate Apple sets such as iosTest, darwinMain, …) are created only when hierarchical source-sets are enabled.
+    // Since Kotlin 2.x this is opt-in – if you don’t ask for a hierarchy you just get the “leaf” sets (iosX64Main, iosArm64Main, iosSimulatorArm64Main, …) and nothing in the middle
+    applyDefaultHierarchyTemplate()
+
     androidTarget()
     jvm("desktop")
     iosX64(); iosArm64(); iosSimulatorArm64()
@@ -20,6 +24,9 @@ kotlin {
                 implementation(compose.material)
                 implementation(compose.components.resources)
 //                implementation(libs.ui.tooling.preview.android)
+//                implementation(libs.androidx.constraintlayout)
+                /// Compose 1.7.3
+                implementation(libs.constraintlayout.compose.multiplatform)
             }
         }
         val desktopMain by getting {
@@ -27,6 +34,7 @@ kotlin {
                 implementation(libs.ui.tooling.preview.desktop)
                 implementation(compose.desktop.currentOs)
                 implementation(libs.vlcj)
+                implementation(libs.coroutines.core)
             }
         }
 
@@ -42,6 +50,13 @@ kotlin {
                 implementation(libs.media3.exoplayer)
                 implementation(libs.androidx.media3.ui)
 //                implementation(libs.media3.ui)
+            }
+        }
+
+        val iosMain by getting {
+            dependencies {
+                implementation(compose.runtime)
+                implementation(libs.interop)
             }
         }
     }

@@ -19,7 +19,7 @@ import net.sdfgsdfg.resources.earth
 @Preview
 @Composable
 fun AppAndroidPreview() {
-    SharedScreen()
+    MainActivity()
 }
 
 class MainActivity : ComponentActivity() {
@@ -33,12 +33,7 @@ class MainActivity : ComponentActivity() {
             ) {
                 MainScreen(
                     metrics = LocalWindowMetrics.current,
-                    video   = {
-                        AndroidVideo(
-                            source   = Res.drawable.earth.toPlayablePath(),
-                            modifier = Modifier.fillMaxSize()
-                        )
-                    }
+                    autoPlay = true
                 )
             }
         }

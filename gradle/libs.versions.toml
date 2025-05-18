@@ -7,6 +7,8 @@
 [versions]
 activityCompose         = "1.10.1"
 compose                 = "1.8.0"               # xx compatible material3 is going to be 1.3.2 as per https://www.jetbrains.com/help/kotlin-multiplatform-dev/compose-compatibility-and-versioning.html#jetpack-compose-and-compose-multiplatform-release-cycles
+constraintlayoutComposeMultiplatform = "0.5.1"
+coroutines              = "1.10.2"
 composeBom              = "2025.05.00"
 kotlin                  = "2.1.21"
 media3                  = "1.6.1"
@@ -18,6 +20,7 @@ uiToolingPreviewDesktop = "+"
 activityKtx             = "1.10.1"
 media3Exoplayer = "1.7.1"
 media3Ui = "1.7.1"
+constraintlayout = "+"
 
 [plugins]
 jetbrainsCompose            = { id = "org.jetbrains.compose",              version.ref = "compose" }
@@ -35,17 +38,20 @@ composeHotReload            = { id = "org.jetbrains.compose.hot-reload", version
 [libraries]
 androidx-activity-compose   = { module = "androidx.activity:activity-compose",                      version.ref = "activityCompose" }
 compose-bom                 = { group = "androidx.compose", name = "compose-bom",                   version.ref = "composeBom" }
-vlcj                        = { module = "uk.co.caprica:vlcj",                                      version.ref = "vlcj" }
+constraintlayout-compose-multiplatform = { module = "tech.annexflow.compose:constraintlayout-compose-multiplatform", version.ref = "constraintlayoutComposeMultiplatform" }
 ui-tooling-preview-desktop  = { group = "androidx.compose.ui", name = "ui-tooling-preview-desktop", version.ref = "uiToolingPreviewDesktop" }
 activity-ktx                = { group = "androidx.activity", name = "activity-ktx",                 version.ref = "activityKtx" }
+interop = { group = "org.jetbrains.compose.ui", name = "ui-uikit", version.ref = "compose" }
 
-# Media3 / ExoPlayer
-#media3-bom            = { module = "androidx.media3:media3-bom",           version.ref = "media3" }
+# xx Coroutines
+coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
+
+# xx Media  ( Vid )
+vlcj                        = { module = "uk.co.caprica:vlcj",                                      version.ref = "vlcj" }
 media3-exoplayer      = { module = "androidx.media3:media3-exoplayer" }
-media3-exoplayer-dash = { module = "androidx.media3:media3-exoplayer-dash" }
-media3-ui             = { module = "androidx.media3:media3-ui" }
 androidx-media3-exoplayer = { group = "androidx.media3", name = "media3-exoplayer", version.ref = "media3Exoplayer" }
 androidx-media3-ui = { group = "androidx.media3", name = "media3-ui", version.ref = "media3Ui" }
+androidx-constraintlayout = { group = "androidx.constraintlayout", name = "constraintlayout", version.ref = "constraintlayout" }
 
 #
 # ======================================
@@ -93,6 +99,9 @@ androidx-media3-ui = { group = "androidx.media3", name = "media3-ui", version.re
 # [ libraries ]
 #androidx-core-ktx                      = { group = "androidx.core",               name = "core-ktx",                    version.ref = "coreKtx" }
 #coil-svg = { module = "io.coil-kt:coil-svg", version.ref = "coilCompose" }
+#media3-exoplayer-dash = { module = "androidx.media3:media3-exoplayer-dash" }
+#media3-ui             = { module = "androidx.media3:media3-ui" }
+##media3-bom            = { module = "androidx.media3:media3-bom",           version.ref = "media3" }
 #compose-material3                      = { group = "androidx.compose.material3",  name = "material3" }
 #compose-ui                             = { group = "androidx.compose.ui",         name = "ui" }
 #compose-ui-tooling                     = { group = "androidx.compose.ui",         name = "ui-tooling" }
