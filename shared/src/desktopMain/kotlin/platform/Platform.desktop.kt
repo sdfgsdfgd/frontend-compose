@@ -29,7 +29,7 @@ actual fun Video(
 
     LaunchedEffect(url, autoPlay) {
         println("Playing video: $url")
-        mp.media().play(url)
+        mp.media().play(url, ":input-repeat=65535")   // loop forever
         if (!autoPlay) mp.controls().pause()
     }
 

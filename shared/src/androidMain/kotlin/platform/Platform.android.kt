@@ -21,7 +21,7 @@ actual fun Video(
     autoPlay : Boolean
 ) {
     val ctx  = LocalContext.current
-    val uri  = remember(source) { source.toPlayablePath().toUri() }
+    val uri  = remember(ctx, source) { source.playablePath(ctx).toUri() }
     val exo  = remember { ExoPlayer.Builder(ctx).build() }
 
     DisposableEffect(exo) { onDispose { exo.release() } }

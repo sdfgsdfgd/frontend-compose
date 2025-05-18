@@ -11,6 +11,7 @@ import androidx.compose.ui.graphics.Color
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import net.sdfgsdfg.utils.isMacOS
+import uk.co.caprica.vlcj.factory.MediaPlayerFactory
 import uk.co.caprica.vlcj.factory.discovery.NativeDiscovery
 import uk.co.caprica.vlcj.player.base.MediaPlayer
 import uk.co.caprica.vlcj.player.base.MediaPlayerEventAdapter
@@ -97,9 +98,12 @@ private fun Float.toPercentage(): Int = (this * 100).roundToInt()
 fun initializeMediaPlayerComponent(): Component {
     NativeDiscovery().discover()
     return if (isMacOS()) {
-        CallbackMediaPlayerComponent(null, null, InputEvents.NONE, true, null, null, null, null);
+        CallbackMediaPlayerComponent(
+            MediaPlayerFactory("--no-play-and-pause"), null,
+            InputEvents.NONE, true, null, null, null, null,
+        )
     } else {
-        EmbeddedMediaPlayerComponent()
+        EmbeddedMediaPlayerComponent("--no-play-and-pause")
     }
 }
 

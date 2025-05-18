@@ -27,7 +27,7 @@ actual val LocalPlatformContext: ProvidableCompositionLocal<PlatformContext> =
  * that Media3 / ExoPlayer understands.
  */
 @Composable
-actual fun DrawableResource.toPlayablePath(): String {
+fun DrawableResource.toPlayablePath(): String {
     val ctx   = LocalContext.current
     val resId = ctx.resources.getIdentifier(
         /* name   */ this::class.simpleName,   // "earth"
@@ -36,3 +36,10 @@ actual fun DrawableResource.toPlayablePath(): String {
     )
     return "android.resource://${ctx.packageName}/$resId".toUri().toString()
 }
+
+fun DrawableResource.playablePath(ctx: Context): String =
+    "android.resource://${ctx.packageName}/${
+        ctx.resources.getIdentifier(
+            this::class.simpleName, "drawable", ctx.packageName
+        )
+    }"

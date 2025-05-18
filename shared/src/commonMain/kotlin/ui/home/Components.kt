@@ -2,8 +2,8 @@ package net.sdfgsdfg.ui.home
 
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.Easing
-import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.foundation.Image
@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.sp
 import net.sdfgsdfg.resources.Res
 import net.sdfgsdfg.resources.compose_multiplatform
 import org.jetbrains.compose.resources.painterResource
+import kotlin.math.pow
 
 /* ──────────────────────────────────────────────────────────────── */
 /*  A) vignette that hugs the video rectangle                      */
@@ -90,19 +91,25 @@ fun Modifier.verticalGapFade(stripHeight: Dp, density: Density) = drawWithConten
 
 /* ── the fade strip as its own composable / layer ────────────── */
 @Composable
-fun GapFadeStrip(blurRadius: Dp = 64.dp) {
-    val stops = remember { buildStops() }             // build once
+fun GapFadeStrip(blurRadius: Dp = 24.dp) {          // 24 dp blur is plenty
+    val stops = remember {
+        buildStops(
+            totalStops = 1024,
+            darkA   = .995f,
+            lightA  = .04f        // just a ghost at the ceiling
+        )
+    }
 
     Box(
         Modifier
             .fillMaxWidth()
             .fillMaxHeight()
-            .graphicsLayer {}
+            .graphicsLayer {}                       // isolate for blur
             .drawWithCache {
                 val brush = Brush.verticalGradient(
                     colorStops = stops,
-                    startY = 0f,
-                    endY = size.height
+                    startY = size.height,           // ⬅  bottom-up
+                    endY = 0f
                 )
                 onDrawBehind { drawRect(brush) }
             }
@@ -110,18 +117,38 @@ fun GapFadeStrip(blurRadius: Dp = 64.dp) {
     )
 }
 
+// ── fast tail easing for the last 30–40 %
+private val TailEasing = CubicBezierEasing(0.20f, 0f, 0.55f, 1f)
+
+/**
+ * Two-stage ramp:
+ *   ① 0-knee  : darkA → midA   (super-gentle linear fade)
+ *   ② knee-1  : midA  → lightA (eased, fast drop-off)
+ */
 private fun buildStops(
-    steps: Int = 16,                       // resolution
-    easing: Easing = FastOutSlowInEasing,      // slow-out / fast-in
-    darkA: Float = .90f,                     // max alpha next to video
-    lightA: Float = .05f                      // alpha at the very top
+    totalStops: Int = 1024,
+    knee:      Float = 0.88f,   // 66 % of the strip = slow zone
+    darkA:     Float = .99f,    // 99 % at very bottom
+    midA:      Float = .60f,    // ~60 % opacity when we hit the knee
+    lightA:    Float = .02f,    // practically gone at top
+    tailEase:  Easing = TailEasing
 ): Array<Pair<Float, Color>> =
-    (0..steps).map { i ->
-        val t = i / steps.toFloat()
-        val eased = easing.transform(t)                 // 0 → 1 (non-linear)
-        val alpha = lightA + (darkA - lightA) * eased   // interpolate alphas
-        t to Color.Black.copy(alpha = alpha)
-    }.toTypedArray()
+    Array(totalStops + 1) { i ->
+        val p = i / totalStops.toFloat()          // 0‒1 along strip
+
+        val α = if (p < knee) {
+            // Stage-1: *linear* micro-decrement
+            val t = p / knee                      // 0‒1 inside slow zone
+            darkA + (midA - darkA) * t            // .99 → .60 very slowly
+        } else {
+            // Stage-2: eased plunge to full transparency
+            val t = (p - knee) / (1 - knee)       // 0‒1 inside fast zone
+            val e = tailEase.transform(t)
+            midA  + (lightA - midA) * e           // .60 → .02 rapidly
+        }
+
+        p to Color.Black.copy(alpha = α)
+    }
 
 fun Modifier.topGradientOverlayOLD(videoTopYDp: Dp, density: Density) = this.then(
     Modifier.drawWithContent {
