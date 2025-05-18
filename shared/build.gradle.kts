@@ -35,8 +35,19 @@ kotlin {
                 implementation(libs.activity.ktx)
                 implementation(project.dependencies.platform(libs.compose.bom))
                 implementation(libs.androidx.activity.compose)
+
+                // ▶ ExoPlayer / Media3  ( vid )
+//                implementation(project.dependencies.platform(libs.media3.bom))
+                implementation(libs.androidx.media3.exoplayer)
+                implementation(libs.media3.exoplayer)
+                implementation(libs.androidx.media3.ui)
+//                implementation(libs.media3.ui)
             }
         }
+    }
+
+    compilerOptions { // this helps suppress some unnecessary beta warnings on actual impls of iOS target and others
+        freeCompilerArgs.add("-Xexpect-actual-classes")
     }
 
     // xx https://www.jetbrains.com/help/kotlin-multiplatform-dev/compose-multiplatform-resources-setup.html#resources-in-the-androidlibrary-target
@@ -73,7 +84,7 @@ gradle.projectsEvaluated {
 
 compose.desktop {
     application {
-        mainClass = "net.sdfgsdfg.MainKt"
+        mainClass = "mainKt"
         nativeDistributions {
             targetFormats(
                 TargetFormat.Dmg,

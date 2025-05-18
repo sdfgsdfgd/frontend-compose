@@ -1,11 +1,16 @@
 package utils
 
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.awt.SwingPanel
 import androidx.compose.ui.graphics.Color
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import net.sdfgsdfg.utils.isMacOS
 import uk.co.caprica.vlcj.factory.discovery.NativeDiscovery
 import uk.co.caprica.vlcj.player.base.MediaPlayer
 import uk.co.caprica.vlcj.player.base.MediaPlayerEventAdapter
@@ -89,7 +94,7 @@ private fun Float.toPercentage(): Int = (this * 100).roundToInt()
  * See https://github.com/caprica/vlcj/issues/887#issuecomment-503288294
  * for why we're using CallbackMediaPlayerComponent for macOS.
  */
-private fun initializeMediaPlayerComponent(): Component {
+fun initializeMediaPlayerComponent(): Component {
     NativeDiscovery().discover()
     return if (isMacOS()) {
         CallbackMediaPlayerComponent(null, null, InputEvents.NONE, true, null, null, null, null);
@@ -147,5 +152,3 @@ private fun Component.mediaPlayer() = when (this) {
     is EmbeddedMediaPlayerComponent -> mediaPlayer()
     else -> error("mediaPlayer() can only be called on vlcj player components")
 }
-
-fun isMacOS() = System.getProperty("os.name")?.lowercase()?.contains(Regex("mac|darwin")) ?: false
