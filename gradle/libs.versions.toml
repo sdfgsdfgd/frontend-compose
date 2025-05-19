@@ -11,6 +11,7 @@ constraintlayoutComposeMultiplatform = "0.5.1"
 coroutines              = "1.10.2"
 composeBom              = "2025.05.00"
 kotlin                  = "2.1.21"
+material = "1.12.0"
 media3                  = "1.6.1"
 composeHotReload        = "1.0.0-alpha09"
 agp                     = "8.9.1"
@@ -39,6 +40,10 @@ composeHotReload            = { id = "org.jetbrains.compose.hot-reload", version
 androidx-activity-compose   = { module = "androidx.activity:activity-compose",                      version.ref = "activityCompose" }
 compose-bom                 = { group = "androidx.compose", name = "compose-bom",                   version.ref = "composeBom" }
 constraintlayout-compose-multiplatform = { module = "tech.annexflow.compose:constraintlayout-compose-multiplatform", version.ref = "constraintlayoutComposeMultiplatform" }
+
+# this provides the material3 theme in Manifest, transparency
+material = { module = "com.google.android.material:material", version.ref = "material" }
+
 ui-tooling-preview-desktop  = { group = "androidx.compose.ui", name = "ui-tooling-preview-desktop", version.ref = "uiToolingPreviewDesktop" }
 activity-ktx                = { group = "androidx.activity", name = "activity-ktx",                 version.ref = "activityKtx" }
 interop = { group = "org.jetbrains.compose.ui", name = "ui-uikit", version.ref = "compose" }

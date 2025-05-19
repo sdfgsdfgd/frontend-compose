@@ -22,10 +22,7 @@ import androidx.compose.ui.window.WindowState
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import net.sdfgsdfg.platform.LocalWindowMetrics
-import net.sdfgsdfg.platform.Video
 import net.sdfgsdfg.platform.rememberWindowMetrics
-import net.sdfgsdfg.resources.Res
-import net.sdfgsdfg.resources.earth
 import java.awt.Toolkit
 
 fun main() = application {

@@ -49,6 +49,7 @@ kotlin {
                 implementation(libs.androidx.media3.exoplayer)
                 implementation(libs.media3.exoplayer)
                 implementation(libs.androidx.media3.ui)
+                implementation(libs.material)
 //                implementation(libs.media3.ui)
             }
         }

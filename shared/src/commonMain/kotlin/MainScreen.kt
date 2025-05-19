@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.material.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.max
@@ -19,7 +18,6 @@ import net.sdfgsdfg.resources.Res
 import net.sdfgsdfg.resources.earth
 import net.sdfgsdfg.ui.home.GapFadeStrip
 import net.sdfgsdfg.ui.home.temporaryOverlays
-import net.sdfgsdfg.ui.home.videoVignette
 
 @Composable
 fun MainScreen(
@@ -45,7 +43,10 @@ fun MainScreen(
                     end.linkTo(parent.end)
                 }.fillMaxWidth()
                     .height(videoHeight)
-                    .videoVignette()
+//                    .videoVignette()
+//                    .wrapContentSize(Alignment.BottomCenter)
+//                    .clipToBounds()
+//                    .aspectRatio(matchHeightConstraintsFirst = true, ratio = 16f / 9f)
             ) {
                 Video(
                     source = Res.drawable.earth,

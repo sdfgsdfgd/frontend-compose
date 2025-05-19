@@ -33,7 +33,7 @@
 //import net.sdfgsdfg.resources.compose_multiplatform
 //import org.jetbrains.compose.resources.painterResource
 //import utils.Progress
-//import utils.Video
+//import ui.Video
 //
 //@Composable
 //@Preview

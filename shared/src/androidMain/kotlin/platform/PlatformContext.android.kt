@@ -5,8 +5,35 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.ProvidableCompositionLocal
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.platform.LocalContext
-import org.jetbrains.compose.resources.DrawableResource
 import androidx.core.net.toUri
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
+import net.sdfgsdfg.resources.Res
+import net.sdfgsdfg.resources.allDrawableResources
+import org.jetbrains.compose.resources.DrawableResource
+import java.io.File
+import java.util.concurrent.ConcurrentHashMap
+
+fun DrawableResource.playablePath(ctx: Context): String =
+    "android.resource://${ctx.packageName}/${
+        ctx.resources.getIdentifier(
+            this::class.simpleName, "drawable", ctx.packageName
+        )
+    }"
+
+//
+//
+//
+//
+// xx UNUSED
+// xx UNUSED
+// xx UNUSED
+// xx UNUSED
+// xx UNUSED
+// xx UNUSED
+// xx UNUSED
+//
+//
 
 /**
  * On Android we just wrap the real `android.content.Context`.
@@ -18,28 +45,23 @@ actual class PlatformContext internal constructor(
 
 actual val LocalPlatformContext: ProvidableCompositionLocal<PlatformContext> =
     staticCompositionLocalOf {
-        error("No Android Context provided – wrap your Composable tree in " +
-                "`CompositionLocalProvider(LocalPlatformContext provides PlatformContext(context))`")
+        error(
+            "No Android Context provided – wrap your Composable tree in " +
+                    "`CompositionLocalProvider(LocalPlatformContext provides PlatformContext(context))`"
+        )
     }
 
-/**
- * Convert a drawable resource into an `android.resource://…` Uri string
- * that Media3 / ExoPlayer understands.
- */
-@Composable
-fun DrawableResource.toPlayablePath(): String {
-    val ctx   = LocalContext.current
-    val resId = ctx.resources.getIdentifier(
-        /* name   */ this::class.simpleName,   // "earth"
-        /* defType*/ "drawable",
-        /* defPkg */ ctx.packageName
-    )
-    return "android.resource://${ctx.packageName}/$resId".toUri().toString()
+private val cache = ConcurrentHashMap<DrawableResource, String>()
+
+fun DrawableResource.toPlayablePath(): String = cache.getOrPut(this) {
+    val key = Res.allDrawableResources.entries.first { it.value === this }.key
+
+    File.createTempFile(key, ".mp4").apply {
+        deleteOnExit()
+        runBlocking(Dispatchers.IO) {
+            writeBytes(Res.readBytes("drawable/$key.mp4"))
+        }
+    }.absolutePath
 }
 
-fun DrawableResource.playablePath(ctx: Context): String =
-    "android.resource://${ctx.packageName}/${
-        ctx.resources.getIdentifier(
-            this::class.simpleName, "drawable", ctx.packageName
-        )
-    }"
+// xx UNUSED

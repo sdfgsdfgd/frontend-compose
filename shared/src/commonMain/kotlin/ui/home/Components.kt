@@ -4,6 +4,7 @@ package net.sdfgsdfg.ui.home
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.Easing
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.foundation.Image
@@ -38,7 +39,6 @@ import androidx.compose.ui.unit.sp
 import net.sdfgsdfg.resources.Res
 import net.sdfgsdfg.resources.compose_multiplatform
 import org.jetbrains.compose.resources.painterResource
-import kotlin.math.pow
 
 /* ──────────────────────────────────────────────────────────────── */
 /*  A) vignette that hugs the video rectangle                      */
@@ -56,6 +56,7 @@ fun Modifier.videoVignette() = drawWithContent {
     drawRect(vignette)
 }
 
+// Handmade gourmet version
 /* ──────────────────────────────────────────────────────────────── */
 /*  B) vertical fade for any strip-height you give it              */
 /*     • 0-10 %   : opaque black                                   */
@@ -91,7 +92,7 @@ fun Modifier.verticalGapFade(stripHeight: Dp, density: Density) = drawWithConten
 
 /* ── the fade strip as its own composable / layer ────────────── */
 @Composable
-fun GapFadeStrip(blurRadius: Dp = 24.dp) {          // 24 dp blur is plenty
+fun GapFadeStrip(blurRadius: Dp = 24.dp) {
     val stops = remember {
         buildStops(
             totalStops = 1024,
@@ -118,7 +119,7 @@ fun GapFadeStrip(blurRadius: Dp = 24.dp) {          // 24 dp blur is plenty
 }
 
 // ── fast tail easing for the last 30–40 %
-private val TailEasing = CubicBezierEasing(0.20f, 0f, 0.55f, 1f)
+private val TailEasing = CubicBezierEasing(0.75f, 0.86f, 0.925f, 1f)
 
 /**
  * Two-stage ramp:
@@ -127,11 +128,11 @@ private val TailEasing = CubicBezierEasing(0.20f, 0f, 0.55f, 1f)
  */
 private fun buildStops(
     totalStops: Int = 1024,
-    knee:      Float = 0.88f,   // 66 % of the strip = slow zone
+    knee:      Float = 0.50f,   // 66 % of the strip = slow zone
     darkA:     Float = .99f,    // 99 % at very bottom
-    midA:      Float = .60f,    // ~60 % opacity when we hit the knee
+    midA:      Float = .90f,    // ~60 % opacity when we hit the knee
     lightA:    Float = .02f,    // practically gone at top
-    tailEase:  Easing = TailEasing
+    tailEase:  Easing = FastOutSlowInEasing
 ): Array<Pair<Float, Color>> =
     Array(totalStops + 1) { i ->
         val p = i / totalStops.toFloat()          // 0‒1 along strip
