@@ -128,10 +128,10 @@ private val TailEasing = CubicBezierEasing(0.75f, 0.86f, 0.925f, 1f)
  */
 private fun buildStops(
     totalStops: Int = 1024,
-    knee:      Float = 0.50f,   // 66 % of the strip = slow zone
+    knee:      Float = 0.66f,   // 22 % of the strip = slow zone
+    lightA:    Float = .02f,    // 0.02% opacity practically gone at top
+    midA:      Float = .90f,    // ~90 % opacity when we hit the knee
     darkA:     Float = .99f,    // 99 % at very bottom
-    midA:      Float = .90f,    // ~60 % opacity when we hit the knee
-    lightA:    Float = .02f,    // practically gone at top
     tailEase:  Easing = FastOutSlowInEasing
 ): Array<Pair<Float, Color>> =
     Array(totalStops + 1) { i ->

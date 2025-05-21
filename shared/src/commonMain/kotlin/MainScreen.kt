@@ -18,6 +18,7 @@ import net.sdfgsdfg.resources.Res
 import net.sdfgsdfg.resources.earth
 import net.sdfgsdfg.ui.home.GapFadeStrip
 import net.sdfgsdfg.ui.home.temporaryOverlays
+import net.sdfgsdfg.ui.home.videoVignette
 
 @Composable
 fun MainScreen(
@@ -43,7 +44,7 @@ fun MainScreen(
                     end.linkTo(parent.end)
                 }.fillMaxWidth()
                     .height(videoHeight)
-//                    .videoVignette()
+                    .videoVignette()
 //                    .wrapContentSize(Alignment.BottomCenter)
 //                    .clipToBounds()
 //                    .aspectRatio(matchHeightConstraintsFirst = true, ratio = 16f / 9f)
@@ -65,7 +66,7 @@ fun MainScreen(
                     height = Dimension.fillToConstraints   // stretch to cover the whole gap
                 }.fillMaxWidth()
             ) {
-                GapFadeStrip(blurRadius = 12.dp)
+                GapFadeStrip(blurRadius = 24.dp)
             }
         }
 
