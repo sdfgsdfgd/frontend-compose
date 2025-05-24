@@ -10,15 +10,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.max
+import androidx.compose.ui.zIndex
 import androidx.constraintlayout.compose.ConstraintLayout
 import androidx.constraintlayout.compose.Dimension
 import net.sdfgsdfg.platform.Video
 import net.sdfgsdfg.platform.WindowMetrics
 import net.sdfgsdfg.resources.Res
 import net.sdfgsdfg.resources.earth
-import net.sdfgsdfg.ui.home.GapFadeStrip
-import net.sdfgsdfg.ui.home.temporaryOverlays
-import net.sdfgsdfg.ui.home.videoVignette
+import net.sdfgsdfg.ui.GapFadeStrip
+import net.sdfgsdfg.ui.login.LoginScreen
+import net.sdfgsdfg.ui.videoVignette
 
 @Composable
 fun MainScreen(
@@ -34,7 +35,24 @@ fun MainScreen(
 
     MaterialTheme {
         ConstraintLayout(Modifier.fillMaxSize()) {
-            val (video, gradient) = createRefs()
+            val (content, video, gradient) = createRefs()
+
+            // —————————————————  CONTENT  ——————————————————————————
+            // TODO: Navigation wrapper instead of LoginScreen, or a container that crossfades sequentially
+            LoginScreen(
+                modifier = Modifier.constrainAs(content) {
+                    top.linkTo(parent.top)
+                    bottom.linkTo(video.top)
+                    start.linkTo(parent.start)
+                    end.linkTo(parent.end)
+//                    width = Dimension.wrapContent
+//                    height = Dimension.wrapContent
+                    verticalBias = 0.35f
+//                    horizontalBias = 0.5f
+                }.zIndex(1f)
+            ) {
+                println("onAuthenticated  === ===[ ${it.user.name} ]=== ===")
+            }
 
             // —————————————————  VIDEO  ——————————————————————————————
             Box(
@@ -70,7 +88,7 @@ fun MainScreen(
             }
         }
 
-        temporaryOverlays()
+//        temporaryOverlays()
     }
 }
 

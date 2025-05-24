@@ -5,6 +5,7 @@ plugins {
     alias(libs.plugins.compose.compiler)
     alias(libs.plugins.androidApp)
     alias(libs.plugins.jetbrainsCompose)      // brings compose.* aliases
+    alias(libs.plugins.kotlinSerialization)
 }
 
 kotlin {
@@ -27,6 +28,15 @@ kotlin {
 //                implementation(libs.androidx.constraintlayout)
                 /// Compose 1.7.3
                 implementation(libs.constraintlayout.compose.multiplatform)
+                implementation(libs.ktor.client.core)
+                implementation(libs.ktor.client.content.negotiation)
+                implementation(libs.ktor.serialization.kotlinx.json)
+                implementation(libs.kotlinx.serialization.json)
+                implementation(libs.ktor.client.cio)
+                implementation(libs.ktor.client.logging)
+                implementation(libs.slf4j.simple)
+                implementation(libs.androidx.datastore.preferences)
+                implementation(libs.okio)
             }
         }
         val desktopMain by getting {
@@ -35,6 +45,8 @@ kotlin {
                 implementation(compose.desktop.currentOs)
                 implementation(libs.vlcj)
                 implementation(libs.coroutines.core)
+                implementation(libs.ktor.client.cio)
+                implementation(libs.ktor.server.cio)
             }
         }
 
@@ -51,6 +63,8 @@ kotlin {
                 implementation(libs.androidx.media3.ui)
                 implementation(libs.material)
 //                implementation(libs.media3.ui)
+                implementation(libs.ktor.client.okhttp)
+                implementation(libs.androidx.browser)
             }
         }
 
@@ -58,6 +72,7 @@ kotlin {
             dependencies {
                 implementation(compose.runtime)
                 implementation(libs.interop)
+                implementation(libs.ktor.client.darwin)
             }
         }
     }

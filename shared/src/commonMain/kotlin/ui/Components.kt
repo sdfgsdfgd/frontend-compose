@@ -1,5 +1,4 @@
-package net.sdfgsdfg.ui.home
-
+package net.sdfgsdfg.ui
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.CubicBezierEasing
