@@ -10,12 +10,11 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
+import okio.FileSystem
 import okio.Path
 import okio.Path.Companion.toPath
 import java.awt.Desktop.getDesktop
 import java.net.URI
-import java.nio.file.Files
-import java.nio.file.Paths
 
 actual val REDIRECT = "http://localhost:1410/callback"
 actual val STATE_PREFIX = ""          // no prefix needed
@@ -53,13 +52,12 @@ actual object DeepLinkHandler {
     }
 }
 
-actual fun appDataPath(fileName: String, platformCtx: Any): Path {
-    val base: String = when {
-        System.getProperty("os.name").startsWith("Windows", ignoreCase = true) ->
-            System.getenv("APPDATA") + "\\Arcana"                     // e.g. C:\Users\Kaan\AppData\Roaming\Arcana
-        else -> System.getProperty("user.home") + "/.arcana"         // macOS & Linux: ~/.arcana
+actual object AppDirs {
+    actual fun init(platformCtx: Any?) {}
+
+    actual val path: Path by lazy {
+        val p = (System.getProperty("user.home") + "/.arcana").toPath()
+        FileSystem.SYSTEM.createDirectories(p)
+        p
     }
-    val dir = Paths.get(base)
-    Files.createDirectories(dir)                                     // ensure exists
-    return "$base/$fileName".toPath()
 }

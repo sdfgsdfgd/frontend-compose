@@ -23,6 +23,7 @@ import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import net.sdfgsdfg.platform.LocalWindowMetrics
 import net.sdfgsdfg.platform.rememberWindowMetrics
+import ui.login.AppDirs
 import java.awt.Toolkit
 
 fun main() = application {
@@ -78,88 +79,3 @@ private fun DraggableWindow(
             }
     ) { content() }
 }
-
-
-// xx OLD CODE
-// xx OLD CODE
-// xx OLD CODE
-// xx OLD CODE
-// xx OLD CODE
-// xx OLD CODE
-// xx OLD CODE
-//fun main2() = application {
-//    val screenSize = Toolkit.getDefaultToolkit().screenSize
-//    val desktopWidth = screenSize.width.dp
-//    val desktopHeight = screenSize.height.dp
-//
-//    //xx ==============
-////    parseKt()
-////    parsePython()
-//
-////    demo()
-//    //xx ==============
-//
-//    val windowState = rememberWindowState(
-//        position = WindowPosition(Alignment.Center),
-//        size = DpSize(desktopWidth * 4 / 5, desktopHeight * 4 / 5)
-//    )
-//
-//    Window(
-//        title = "Arcana - Codebase Comprehension Engine - Desktop App",
-//        state = windowState,
-//        alwaysOnTop = false,
-//        undecorated = true,
-//        transparent = true,
-//        onCloseRequest = ::exitApplication,
-//    ) {
-//        Box(
-//            modifier = Modifier
-//                .fillMaxSize()
-//        ) {
-//            SetupWindow(windowState)
-//        }
-//    }
-//}
-//
-//@OptIn(ExperimentalComposeUiApi::class)
-//@Composable
-//fun SetupWindow(windowState: WindowState) {
-//    val windowInfo = LocalWindowInfo.current
-//    val density = LocalDensity.current
-//
-//    val desktopWidth = with(density) { windowInfo.containerSize.width.toDp() }
-//    val desktopHeight = with(density) { windowInfo.containerSize.height.toDp() }
-//
-//    LaunchedEffect(Unit) {
-//        windowState.size = DpSize(desktopWidth / 2, desktopHeight / 2)
-//        windowState.position = WindowPosition(desktopWidth / 2, desktopHeight / 2)
-//    }
-//
-//    var dragOffsetX by remember { mutableStateOf(0.dp) }
-//    var dragOffsetY by remember { mutableStateOf(0.dp) }
-//
-//    LaunchedEffect(dragOffsetX, dragOffsetY) {
-//        windowState.position = WindowPosition(
-//            windowState.position.x + dragOffsetX,
-//            windowState.position.y + dragOffsetY
-//        )
-//    }
-//
-//    Box(
-//        modifier = Modifier
-//            .fillMaxSize()
-//            .pointerInput(Unit) {
-//                detectDragGestures { _, dragAmount ->
-//                    dragOffsetX += with(density) { dragAmount.x.toDp() }
-//                    dragOffsetY += with(density) { dragAmount.y.toDp() }
-//                }
-//            }
-//    ) {
-//        MainApp()
-//    }
-//}
-// xx OLD CODE
-// xx OLD CODE
-// xx OLD CODE
-// xx OLD CODE
-// xx OLD CODE

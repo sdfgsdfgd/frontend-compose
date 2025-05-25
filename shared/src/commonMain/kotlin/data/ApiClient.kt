@@ -11,7 +11,7 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.json.Json
-import ui.login.AuthManager
+import net.sdfgsdfg.data.AuthManager
 import ui.login.model.AuthState
 
 object ApiClient {

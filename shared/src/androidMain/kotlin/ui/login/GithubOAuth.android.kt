@@ -8,7 +8,6 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.shareIn
-import net.sdfgsdfg.platform.LocalPlatformContext
 import okio.Path
 import okio.Path.Companion.toPath
 
@@ -39,8 +38,17 @@ actual object DeepLinkHandler {
     }
 }
 
-actual fun appDataPath(fileName: String, platformCtx: Any): Path {
-    val ctx = platformCtx as Context
-    val dir = ctx.getDir("arcana", Context.MODE_PRIVATE)             // /data/data/<pkg>/files/arcana
-    return "${dir.absolutePath}/$fileName".toPath()
+actual object AppDirs {
+    private lateinit var internal: Path
+
+    /** MUST be called from Application.onCreate() */
+    actual fun init(platformCtx: Any?) {
+        val ctx = platformCtx as Context
+        val dir = ctx.getDir("arcana", Context.MODE_PRIVATE)
+        internal = dir.absolutePath.toPath()
+    }
+
+    actual val path: Path
+        get() = if (::internal.isInitialized) internal
+        else error("AppDirs.init(ctx) not called yet")
 }

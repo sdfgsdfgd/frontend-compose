@@ -22,6 +22,9 @@ actual val REDIRECT: String
 actual val STATE_PREFIX: String
     get() = TODO("Not yet implemented")
 
-actual fun appDataPath(fileName: String, platformCtx: Any): Path {
-    TODO("Not yet implemented")
+actual object AppDirs {
+    actual val path: Path
+        get() = TODO("Not yet implemented")
+    actual fun init(platformCtx: Any?) {
+    }
 }

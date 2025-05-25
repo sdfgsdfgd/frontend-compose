@@ -37,6 +37,7 @@ kotlin {
                 implementation(libs.slf4j.simple)
                 implementation(libs.androidx.datastore.preferences)
                 implementation(libs.okio)
+                implementation(libs.kotlinx.datetime)
             }
         }
         val desktopMain by getting {

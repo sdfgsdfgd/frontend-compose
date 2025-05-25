@@ -10,6 +10,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.tooling.preview.Preview
 import net.sdfgsdfg.platform.LocalWindowMetrics
 import net.sdfgsdfg.platform.rememberWindowMetrics
+import ui.login.AppDirs
 import ui.login.DeepLinkHandler
 
 @Preview
@@ -22,6 +23,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+
+        AppDirs.init(this)
 
         setContent {
             CompositionLocalProvider(

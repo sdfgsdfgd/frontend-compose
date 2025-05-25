@@ -117,12 +117,17 @@ object GithubOAuth {
     }.getOrElse { AuthState.Error(it) }
 }
 
-// xx CORNER OF SINGLE QUICK PLATFORM IMPLEMENTATIONS
-expect fun appDataPath(fileName: String, platformCtx: Any): Path
-
 // BrowserLauncher:  Interface to open a URL in the system's default browser
 expect object BrowserLauncher {
     fun open(url: String, platformCtx: Any)
+}
+
+expect object AppDirs {
+    /** Call once per process (noop on desktop) */
+    fun init(platformCtx: Any? = null)
+
+    /** Absolute, per-user, per-app directory – valid after `init` */
+    val path: Path
 }
 
 // region Crypto / Helpers.

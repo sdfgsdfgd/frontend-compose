@@ -1,25 +1,31 @@
-package ui.login
+package net.sdfgsdfg.data
 
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
+import ui.login.GithubOAuth
+import ui.login.TokenStore
 import ui.login.model.AccessToken
 import ui.login.model.AuthState
-import ui.login.model.GithubEmail
 
 object AuthManager {
+
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
+
     private val _state = MutableStateFlow<AuthState>(AuthState.Unauthenticated)
     val state: StateFlow<AuthState> = _state
 
     /** Call once from your Application/compose main */
     fun bootstrap() = scope.launch {
         TokenStore.load()?.let { (token, user, emails) ->
-            println("Auto-login as ${user.name} - token: $token - emails: ${emails.size} primary-email: ${emails.first()}")
+            println("Auto-login as ${user.name} – token cached, ${emails.size} emails")
             _state.value = AuthState.Authenticated(
-                token = AccessToken(token, "bearer", "cached"), // type alias if you like
+                token = AccessToken(token, "bearer", "cached"),
                 user = user,
-                emails = listOf()
+                emails = emails
             )
         }
     }
