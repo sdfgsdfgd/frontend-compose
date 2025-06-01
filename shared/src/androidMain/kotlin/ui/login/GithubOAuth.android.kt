@@ -16,7 +16,12 @@ actual val STATE_PREFIX  = "mob-"
 
 actual object BrowserLauncher {
     actual fun open(url: String, platformCtx: Any) {
-        val ctx = platformCtx as Context
+        val ctx: Context = when (platformCtx) {
+            is Context -> platformCtx
+            is net.sdfgsdfg.platform.PlatformContext -> platformCtx.ctx
+            else -> error("Unsupported platform context: $platformCtx")
+        }
+
         CustomTabsIntent.Builder()
             .build()
             .launchUrl(ctx, url.toUri())

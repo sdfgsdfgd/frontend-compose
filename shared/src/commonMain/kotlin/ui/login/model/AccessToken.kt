@@ -45,3 +45,11 @@ sealed interface AuthState {
     data object Unauthenticated : AuthState
     data class Error(val cause: Throwable) : AuthState
 }
+
+
+data class CachedSession(
+    val token:  String,              // raw access-token
+    val scope:  String,              // space-separated scopes
+    val user:   GithubUser,
+    val emails: List<GithubEmail>
+)

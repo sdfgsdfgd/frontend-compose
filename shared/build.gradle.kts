@@ -58,12 +58,10 @@ kotlin {
                 implementation(libs.androidx.activity.compose)
 
                 // ▶ ExoPlayer / Media3  ( vid )
-//                implementation(project.dependencies.platform(libs.media3.bom))
                 implementation(libs.androidx.media3.exoplayer)
                 implementation(libs.media3.exoplayer)
                 implementation(libs.androidx.media3.ui)
                 implementation(libs.material)
-//                implementation(libs.media3.ui)
                 implementation(libs.ktor.client.okhttp)
                 implementation(libs.androidx.browser)
             }
@@ -94,14 +92,14 @@ kotlin {
 }
 
 android {
-    namespace    = "net.sdfgsdfg"
-    compileSdk   = 35
+    namespace           = "net.sdfgsdfg"
+    compileSdk          = 35
     defaultConfig {
-        applicationId = "net.sdfgsdfg"
-        minSdk  = 24
-        targetSdk = 35
-        versionCode = 1
-        versionName = "0.1"
+        applicationId   = "net.sdfgsdfg"
+        minSdk          = 24
+        targetSdk       = 35
+        versionCode     = 1
+        versionName     = "0.1"
     }
     buildFeatures { compose = true }
     experimentalProperties["android.experimental.kmp.enableAndroidResources"] = true

@@ -58,7 +58,7 @@ object GithubOAuth {
         val url = URLBuilder("https://github.com/login/oauth/authorize").apply {
             parameters.append("client_id", CLIENT_ID)
             parameters.append("redirect_uri", REDIRECT)
-            parameters.append("scope", "read:user user:email")
+            parameters.append("scope", "repo read:user user:email")
             parameters.append("response_type", "code")
             parameters.append("code_challenge", pkce.challenge)
             parameters.append("code_challenge_method", "S256")
@@ -102,6 +102,7 @@ object GithubOAuth {
         ┏━ GitHub OAuth Success ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         ┃  access_token : ${token.accessToken.take(8)}… (len=${token.accessToken.length})
         ┃  token_type   : ${token.tokenType}
+        ┣━ Scope ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         ┃  scope        : ${token.scope}
         ┣━ User ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         ┃  login        : ${user.login}

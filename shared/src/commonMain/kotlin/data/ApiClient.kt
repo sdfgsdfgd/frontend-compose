@@ -5,6 +5,7 @@ import io.ktor.client.engine.cio.CIO
 import io.ktor.client.plugins.ClientRequestException
 import io.ktor.client.plugins.DefaultRequest
 import io.ktor.client.plugins.HttpResponseValidator
+import io.ktor.client.plugins.api.createClientPlugin
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.request.header
 import io.ktor.http.HttpHeaders
@@ -15,20 +16,11 @@ import net.sdfgsdfg.data.AuthManager
 import ui.login.model.AuthState
 
 object ApiClient {
-
-    /** Single, shared Ktor client */
     val http = HttpClient(CIO) {
-
-        install(ContentNegotiation) { json(Json) }
-
-        /* ─── Inject bearer dynamically on EVERY request ─────────── */
+        install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
+        install(AuthHeader)
         install(DefaultRequest) {
-            header(HttpHeaders.Authorization) {
-                when (val st = AuthManager.state.value) {
-                    is AuthState.Authenticated -> "Bearer ${st.token.accessToken}"
-                    else                        -> null          // header omitted
-                }
-            }
+            header(HttpHeaders.UserAgent, "Arcana-KMP/0.1")
         }
 
         /* ─── Auto-logout on 401 ─────────────────────────────────── */
@@ -43,5 +35,15 @@ object ApiClient {
         }
 
         expectSuccess = true
+    }
+}
+
+private val AuthHeader = createClientPlugin("AuthHeader") {
+    onRequest { request, _ ->
+        request.headers.remove(HttpHeaders.Authorization)          // start clean
+
+        (AuthManager.state.value as? AuthState.Authenticated)
+            ?.token?.accessToken
+            ?.let { request.headers.append(HttpHeaders.Authorization, "Bearer $it") }
     }
 }

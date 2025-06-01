@@ -20,19 +20,23 @@ object AuthManager {
 
     /** Call once from your Application/compose main */
     fun bootstrap() = scope.launch {
-        TokenStore.load()?.let { (token, user, emails) ->
-            println("Auto-login as ${user.name} – token cached, ${emails.size} emails")
+        TokenStore.load()?.let { cache ->
+            println("---------------------------------\n\nAuto-login as ${cache.user.name} – token cached, ${cache.emails.size} emails \n")
+            println("---[ Scope:  ${cache.scope} ]---\n\n---------------------------------")
+
             _state.value = AuthState.Authenticated(
-                token = AccessToken(token, "bearer", "cached"),
-                user = user,
-                emails = emails
+                token   = AccessToken(accessToken = cache.token, tokenType = "bearer", scope = cache.scope),
+                user    = cache.user,
+                emails  = cache.emails
             )
         }
     }
 
     suspend fun login(onAuthUrl: (String) -> Unit) {
         val req = GithubOAuth.buildAuthRequest()
-        onAuthUrl(req.url)                       // let UI open browser
+
+        onAuthUrl(req.url)
+
         when (val res = GithubOAuth.awaitToken(req)) {
             is AuthState.Error -> _state.value = AuthState.Error(res.cause)
             is AuthState.Authenticated -> {

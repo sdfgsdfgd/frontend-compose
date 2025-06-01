@@ -3,16 +3,31 @@ package net.sdfgsdfg.ui
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Easing
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.animateIntAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.wrapContentSize
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.Button
+import androidx.compose.material.MaterialTheme
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -21,20 +36,28 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.BlurredEdgeTreatment
 import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -95,7 +118,7 @@ fun SkeuoText(
             style = TextStyle(
                 brush = fill,
                 shadow = Shadow(
-                    color = Color.Black.copy(alpha = 0.35f),
+                    color = Color.Black.copy(alpha = 0.15f),
                     offset = Offset(0f, 1f),
                     blurRadius = 6f
                 )
@@ -103,6 +126,222 @@ fun SkeuoText(
         )
     }
 }
+
+/**
+ * Ultra-skeuomorphic “glass slug”-button.
+ * • pill-shaped billet with cylindrical chrome shading
+ * • travelling glare bar (∞ loop)
+ * • scale + z-elev press feedback
+ *
+ *   drop it in and pass just [text] + [onClick] — tweak the knobs later.
+ */
+@Composable
+fun SkeuoButton(
+    text: String,
+    modifier: Modifier = Modifier,
+    // palette --------------------------------------------------------
+    baseTint: Color = Color.Black.copy(alpha = .4f),
+    bevelLight: Color = Color.DarkGray.copy(alpha = .30f),
+    bevelDark:  Color = Color.Black.copy(alpha = .10f),
+    sweepTint:  Color = Color.DarkGray.copy(alpha = .70f),
+    cornerRadius: Dp = 32.dp,
+    onClick: () -> Unit,
+) {
+    /* ─────────── state ─────────── */
+    var pressed by remember { mutableStateOf(false) }
+    val pressOffsetPx  by animateIntAsState(if (pressed)  8 else 16)
+    val pressBlur      by animateDpAsState(if (pressed) 16.dp else  24.dp)
+    val pressScale     by animateFloatAsState(if (pressed) .98f else 1f)
+
+
+    // ( 1 ) Magic 1: body/background gradient
+    var shape    = RoundedCornerShape(cornerRadius)
+    val background = Brush.verticalGradient(
+        0f to baseTint.lighten(.20f),
+        1f to baseTint.darken(.55f)
+    )
+
+    // ( 2 ) Magic 2: Bevel gradient
+    val bevel    = Brush.verticalGradient(listOf(bevelLight, bevelDark))
+    val rCorner = with(LocalDensity.current) { CornerRadius(cornerRadius.toPx()) }
+
+    /* travelling sweep */
+    val sweepX by rememberInfiniteTransition().animateFloat(
+        initialValue = -0.4f,
+        targetValue  =  1.4f,
+        animationSpec = infiniteRepeatable(tween(22000, easing = FastOutSlowInEasing), repeatMode = RepeatMode.Reverse)
+    )
+
+    Box(
+        modifier
+            .defaultMinSize(minWidth = 120.dp, minHeight = 56.dp)
+            /* press squash + shadow */
+            .graphicsLayer {
+                scaleX = pressScale; scaleY = pressScale
+                shadowElevation = 6.dp.toPx()
+                clip   = false
+                shape  = shape
+            }
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onPress = {
+                        pressed = true
+                        tryAwaitRelease()
+                        pressed = false
+                        onClick()
+                    }
+                )
+            },
+        contentAlignment = Alignment.Center
+    ) {
+
+        val dynBlur   by animateDpAsState(if (pressed) 24.dp  else 34.dp)
+        val dynAlphaT by animateFloatAsState(if (pressed) .18f else .15f)   // top
+        val dynAlphaB by animateFloatAsState(if (pressed) .35f else .25f)   // bottom
+
+        /* TOP light-shadow */
+        // xx old version, no longer used
+//        Box(
+//            Modifier.matchParentSize()
+//                .offset { IntOffset(-6, -pressOffsetPx) }
+//                .blur(pressBlur, BlurredEdgeTreatment.Unbounded)
+//                .background(Color.Gray.copy(alpha = 0.4f), shape)
+//        )
+        Box(
+            Modifier.matchParentSize()
+                .offset { IntOffset(-16, -pressOffsetPx * 2) }      // pull further up
+                .blur(dynBlur, BlurredEdgeTreatment.Unbounded)
+                .drawBehind {
+                    drawRoundRect(
+                        brush = Brush.radialGradient(
+                            0f to Color.White.copy(alpha = dynAlphaT),
+                            1f to Color.Transparent,
+                            center = center.copy(y = -6f),
+                            radius = size.maxDimension * .9f
+                        ),
+                        cornerRadius = rCorner
+                    )
+                }
+        )
+
+        /* BOT dark-shadow */
+        Box(
+            Modifier.matchParentSize()
+                .offset { IntOffset(x = 12, y = pressOffsetPx) }
+                .blur(pressBlur, BlurredEdgeTreatment.Unbounded)
+                .background(Color.DarkGray.copy(alpha = .2f), shape)
+        )
+
+        /* body + bevel + gloss + sweep */
+        Box(
+            Modifier.matchParentSize()
+                .background(background, shape)
+                .border(2.dp, bevel, shape)
+                .drawWithContent {
+                    drawContent()
+
+                    /* edge darken left/right */
+                    drawRoundRect(
+                        Brush.horizontalGradient(
+                            listOf(
+                                Color.Transparent,
+                                Color.Black.copy(alpha = .3f),
+                                Color.Black.copy(alpha = .2f),
+                                Color.Black.copy(alpha = .1f),
+                                Color.Transparent,
+                                Color.Transparent,
+                                Color.Transparent,
+                                Color.White.copy(alpha = .25f),
+                                Color.Transparent,
+                                Color.Black.copy(alpha = .1f),
+                                Color.Transparent,
+                            )
+                        ),
+                        cornerRadius = rCorner,
+                        blendMode = BlendMode.Multiply
+                    )
+
+                    /* top gloss */
+                    drawRoundRect(
+                        Brush.verticalGradient(
+                            0f to Color.Black.copy(alpha = .3f),
+                            1f to Color.Transparent,
+                            endY = size.height * .38f
+                        ),
+                        cornerRadius = rCorner,
+                        blendMode = BlendMode.Darken
+                    )
+
+                    /* travelling sweep */
+                    val barW  = size.width * .12f
+                    val x0    = size.width * sweepX - barW / 2
+                    drawRoundRect(
+                        Brush.linearGradient(
+                            0f   to Color.Transparent,
+                            0.35f to sweepTint,
+                            0.65f to sweepTint.copy(alpha = .12f),
+                            1f   to Color.Transparent,
+                            start = Offset(x0, 0f),
+                            end   = Offset(x0 + barW, size.height)
+                        ),
+                        cornerRadius = rCorner,
+                        blendMode = BlendMode.Lighten
+                    )
+                }
+        )
+
+        /* label */
+        Text(
+            text.uppercase(),
+            fontFamily = FontFamily.Serif,
+            color = Color.Black.copy(alpha = .75f),
+            style = MaterialTheme.typography.button,
+            fontSize = 24.sp,
+            letterSpacing = 0.85.sp,
+            modifier = Modifier.align(Alignment.Center)
+                .padding(horizontal = 48.dp, vertical = 16.dp)
+        )
+    }
+}
+
+/* tiny color helpers */
+private fun Color.lighten(f: Float) = lerp(this, Color.White, f)
+private fun Color.darken(f: Float)  = lerp(this, Color.Black, f)
+
+/* ─ helpers ─ */
+private fun Color.lighten2(frac: Float) =
+    Color(
+        red   = red   + (1f - red)   * frac,
+        green = green + (1f - green) * frac,
+        blue  = blue  + (1f - blue)  * frac,
+        alpha = alpha
+    )
+
+private fun Color.darken2(frac: Float) =
+    Color(
+        red   = red   * (1f - frac),
+        green = green * (1f - frac),
+        blue  = blue  * (1f - frac),
+        alpha = alpha
+    )
+
+/* glass body ---------------------------------------------------------- */
+@Composable
+private fun rememberBodyBrush(): Brush = remember {
+    Brush.radialGradient(
+        0.00f to Color(0x9900B7FF),     // 60 % α aqua core
+        0.80f to Color.Transparent,          // fade to clear
+        0.96f to Color(0xFF9B00FF),     // neon rim
+        1.00f to Color.Transparent
+    )
+}
+
+/* --- expect helper: each platform supplies its own actual --- */
+@Composable
+expect fun rememberShader(
+    press: Float,
+    sweep: Float,
+): Brush
 // endregion
 
 // region ────[ Timings  ( Actual Magic ) ]────────────────────────────────────────────────────────────

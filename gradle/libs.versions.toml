@@ -6,7 +6,7 @@
 
 [versions]
 activityCompose                         = "1.10.1"
-browser                                 = "1.9.0-alpha04"
+browser                                 = "1.8.0"
 compose                                 = "1.8.0"         # xx compatible material3 is going to be 1.3.2 as per https://www.jetbrains.com/help/kotlin-multiplatform-dev/compose-compatibility-and-versioning.html#jetpack-compose-and-compose-multiplatform-release-cycles
 constraintlayoutComposeMultiplatform    = "0.5.1"
 coroutines                              = "1.10.2"
@@ -71,7 +71,7 @@ okio = { group = "com.squareup.okio", name = "okio", version.ref = "okio" }
 
 material = { module = "com.google.android.material:material", version.ref = "material" }
 
-slf4j-simple = { module = "org.slf4j:slf4j-simple", version.ref = "slf4jSimple" }
+slf4j-simple                = { module = "org.slf4j:slf4j-simple", version.ref = "slf4jSimple" }
 ui-tooling-preview-desktop  = { group = "androidx.compose.ui", name = "ui-tooling-preview-desktop", version.ref = "uiToolingPreviewDesktop" }
 activity-ktx                = { group = "androidx.activity", name = "activity-ktx",                 version.ref = "activityKtx" }
 interop                     = { group = "org.jetbrains.compose.ui", name = "ui-uikit", version.ref = "compose" }
@@ -109,7 +109,6 @@ androidx-constraintlayout       = { group = "androidx.constraintlayout", name = 
 #loggingInterceptor        = "4.12.0"
 #materialIconsExtended     = "1.7.8"
 #navigationCompose         = "2.8.9"
-#okhttpProfiler            = "1.1.1"
 #serialization             = "1.8.0"
 #logback = "1.5.16"
 #coil = "2.6.0"

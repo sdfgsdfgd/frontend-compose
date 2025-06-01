@@ -8,7 +8,9 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.tooling.preview.Preview
+import net.sdfgsdfg.platform.LocalPlatformContext
 import net.sdfgsdfg.platform.LocalWindowMetrics
+import net.sdfgsdfg.platform.PlatformContext
 import net.sdfgsdfg.platform.rememberWindowMetrics
 import ui.login.AppDirs
 import ui.login.DeepLinkHandler
@@ -28,7 +30,8 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             CompositionLocalProvider(
-                LocalWindowMetrics provides rememberWindowMetrics()
+                LocalPlatformContext provides PlatformContext(this),
+                LocalWindowMetrics provides rememberWindowMetrics(),
             ) {
                 MainScreen(
                     metrics = LocalWindowMetrics.current,

@@ -16,6 +16,7 @@ import okio.FileSystem
 import okio.Path
 import okio.SYSTEM
 import ui.login.model.AccessToken
+import ui.login.model.CachedSession
 import ui.login.model.GithubEmail
 import ui.login.model.GithubUser
 
@@ -54,20 +55,13 @@ object TokenStore {
     }
 
     /* ── load ─────────────────────────────────────────────────────── */
-    suspend fun load(): Triple<String, GithubUser, List<GithubEmail>>? =
-        store.data.map { p ->
-            val t = p[TOKEN] ?: return@map null
-
-            val u = p[USER]
-                ?.let { Json.decodeFromString<GithubUser>(it) }
-                ?: return@map null
-
-            val e = p[EMAILS]
-                ?.let { Json.decodeFromString<List<GithubEmail>>(it) }
-                ?: emptyList()
-
-            Triple(t, u, e)
-        }.firstOrNull()
+    suspend fun load(): CachedSession? = store.data.map { p ->
+        val tok = p[TOKEN]  ?: return@map null
+        val scp = p[SCOPES] ?: ""
+        val usr = p[USER ]?.let { Json.decodeFromString<GithubUser>(it) } ?: return@map null
+        val eml = p[EMAILS]?.let { Json.decodeFromString<List<GithubEmail>>(it) } ?: emptyList()
+        CachedSession(tok, scp, usr, eml)
+    }.firstOrNull()
 
     /* ── clear ────────────────────────────────────────────────────── */
     fun clear() = scope.launch { store.updateData { emptyPreferences() } }
