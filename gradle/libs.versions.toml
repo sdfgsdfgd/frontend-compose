@@ -10,29 +10,30 @@ browser                                 = "1.8.0"
 compose                                 = "1.8.0"         # xx compatible material3 is going to be 1.3.2 as per https://www.jetbrains.com/help/kotlin-multiplatform-dev/compose-compatibility-and-versioning.html#jetpack-compose-and-compose-multiplatform-release-cycles
 constraintlayoutComposeMultiplatform    = "0.5.1"
 coroutines                              = "1.10.2"
-composeBom                              = "2025.05.00"
+composeBom                              = "2025.05.01"
 datastorePreferences = "1.2.0-alpha02"
 kotlin                                  = "2.1.21"
-kotlinxCrypto                           = "0.1.2"
 kotlinxDatetime = "0.6.0"
 kotlinxSerializationJson                = "1.8.0"
-ktorClientCore                          = "3.1.2"
-ktorClientDarwin                        = "2.3.8"
 ktorClientLogging = "3.1.2"
 material                                = "1.12.0"
-media3                                  = "1.6.1"
-composeHotReload                        = "1.0.0-alpha09"
-agp                                     = "8.9.1"
+agp                                     = "8.9.3"
 slf4jSimple                             = "2.0.13"
 vlcj                                    = "4.8.3"
-uiToolingPreviewAndroid                 = "+"
 uiToolingPreviewDesktop                 = "+"
 activityKtx                             = "1.10.1"
 media3Exoplayer                         = "1.7.1"
 media3Ui                                = "1.7.1"
-constraintlayout                        = "+"
 ktor                                    = "3.1.2"
-okio                                    = "3.8.0"
+okio                                    = "3.10.2"
+
+#composeHotReload                        = "1.0.0-alpha09"
+#constraintlayout                        = "+"
+#ktorClientDarwin                        = "2.3.8"
+#kotlinxCrypto                           = "0.1.2"
+#ktorClientCore                          = "3.1.2"
+#media3                                  = "1.6.1"
+#uiToolingPreviewAndroid                 = "+"
 
 [plugins]
 jetbrainsCompose            = { id = "org.jetbrains.compose",              version.ref = "compose" }
@@ -42,7 +43,8 @@ kotlinMultiplatform         = { id = "org.jetbrains.kotlin.multiplatform",  vers
 kotlinJvm                   = { id = "org.jetbrains.kotlin.jvm",           version.ref = "kotlin" }
 androidLib                  = { id = "com.android.library",                 version.ref = "agp" }
 androidApp                  = { id = "com.android.application",             version.ref = "agp" }
-composeHotReload            = { id = "org.jetbrains.compose.hot-reload", version.ref = "composeHotReload" }
+
+#composeHotReload            = { id = "org.jetbrains.compose.hot-reload", version.ref = "composeHotReload" }
 
 # ==========================================================
 
@@ -84,7 +86,7 @@ vlcj                            = { module = "uk.co.caprica:vlcj", version.ref =
 media3-exoplayer                = { module = "androidx.media3:media3-exoplayer" }
 androidx-media3-exoplayer       = { group = "androidx.media3", name = "media3-exoplayer", version.ref = "media3Exoplayer" }
 androidx-media3-ui = { group    = "androidx.media3", name = "media3-ui", version.ref = "media3Ui" }
-androidx-constraintlayout       = { group = "androidx.constraintlayout", name = "constraintlayout", version.ref = "constraintlayout" }
+#androidx-constraintlayout       = { group = "androidx.constraintlayout", name = "constraintlayout", version.ref = "constraintlayout" }
 
 #
 # ======================================
@@ -112,11 +114,11 @@ androidx-constraintlayout       = { group = "androidx.constraintlayout", name = 
 #serialization             = "1.8.0"
 #logback = "1.5.16"
 #coil = "2.6.0"
-# antlrKotlinVersion = "1.0.0-RC4"
-# treesitter = "0.24.0"
-# testingJunitExt           = "1.2.1"
-# exifinterface = "1.4.1"
-# exoplayer = "1.1.0"
+#antlrKotlinVersion = "1.0.0-RC4"
+#treesitter = "0.24.0"
+#testingJunitExt           = "1.2.1"
+#exifinterface = "1.4.1"
+#exoplayer = "1.1.0"
 #
 # [ plugins ]
 #

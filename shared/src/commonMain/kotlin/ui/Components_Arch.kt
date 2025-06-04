@@ -1,31 +1,40 @@
 package net.sdfgsdfg.ui
 
-
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.Icon
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.BlurredEdgeTreatment
 import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.ClipOp
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Paint
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathFillType.Companion.NonZero
 import androidx.compose.ui.graphics.RectangleShape
@@ -36,6 +45,7 @@ import androidx.compose.ui.graphics.StrokeJoin.Companion.Miter
 import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.addOutline
 import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
@@ -44,7 +54,9 @@ import androidx.compose.ui.graphics.vector.ImageVector.Builder
 import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.lerp
 import kotlin.random.Random
 
@@ -61,11 +73,12 @@ import kotlin.random.Random
  *             MetalPowerButton()
  *         }
  */
+@Suppress("unused")
 @Composable
 fun MetalPowerButton() {
-    var isPressed  by remember { mutableStateOf(false) }
-    var poweredOn  by remember { mutableStateOf(false) }
-    val pressAnim  by animateFloatAsState(
+    var isPressed by remember { mutableStateOf(false) }
+    var poweredOn by remember { mutableStateOf(false) }
+    val pressAnim by animateFloatAsState(
         targetValue = if (isPressed) 1f else 0f,
         animationSpec = spring(stiffness = Spring.StiffnessHigh)
     )
@@ -90,17 +103,23 @@ fun MetalPowerButton() {
                     Brush.radialGradient(
                         listOf(Color.Transparent, Color.Black.copy(alpha = .6f * pressAnim)),
                         center = center,
-                        radius  = size.minDimension * .6f
+                        radius = size.minDimension * .6f
                     ),
                     blendMode = BlendMode.Overlay
                 )
             }
             // 3️⃣ subtle outer ring
-            .border(4.dp, Brush.verticalGradient(
-                listOf(Color(0xFF2C2C2C), Color(0xFF3C3C3C))), CircleShape)
+            .border(
+                4.dp, Brush.verticalGradient(
+                    listOf(Color(0xFF2C2C2C), Color(0xFF3C3C3C))
+                ), CircleShape
+            )
             // 4️⃣ highlight ring
-            .border(1.dp, Brush.verticalGradient(
-                listOf(Color.White, Color.Transparent)), CircleShape)
+            .border(
+                1.dp, Brush.verticalGradient(
+                    listOf(Color.White, Color.Transparent)
+                ), CircleShape
+            )
             // 5️⃣ hit-test
             .pointerInput(Unit) {
                 detectTapGestures(
@@ -177,20 +196,20 @@ fun Modifier.brushedMetal(
             }
             onDrawBehind {
                 clipPath(path) {
-                    val center = Offset(center.x * size.width, center.y * size.height)
+                    val centerCircle = Offset(center.x * size.width, center.y * size.height)
                     drawRect(color = baseColor)
                     drawRect(
                         brush = Brush.radialGradient(
                             colors = ringColors,
                             tileMode = TileMode.Repeated,
-                            center = center,
+                            center = centerCircle,
                             radius = size.width * .2f,
                         ),
                         blendMode = BlendMode.Overlay,
                     )
                     rotate(
                         degrees = highlightRotation,
-                        pivot = center
+                        pivot = centerCircle
                     ) {
                         drawCircle(
                             brush = Brush.sweepGradient(
@@ -202,7 +221,7 @@ fun Modifier.brushedMetal(
                                     }
                                     add(highlightColor)
                                 },
-                                center = center
+                                center = centerCircle
                             ),
                             radius = size.width * size.height
                         )
@@ -257,4 +276,155 @@ val PowerSettingsIcon: ImageVector
 private var _powerSettingsIcon: ImageVector? = null
 
 
+// endregion
+
+// region Customized Shadow Button
+@Immutable
+data class Shadow(
+    val color: Color = Color.Black,
+    val blur: Dp = 8.dp,
+    val spread: Dp = 0.dp,
+    val dx: Dp = 0.dp,
+    val dy: Dp = 4.dp,
+    val inset: Boolean = false,
+)
+
+/**
+ *
+ * Usage :
+ *
+ * Box(
+ *     Modifier
+ *         .size(160.dp)
+ *         .boxShadow(
+ *             Shadow(color = Color.Black.copy(.35f), blur = 16.dp, spread = 4.dp, dy = 8.dp),
+ *             Shadow(color = Color.White.copy(.45f), blur = 10.dp, inset = true, dy = (-2).dp),
+ *             shape = RoundedCornerShape(32.dp)
+ *         )
+ *         .background(Color(0xFF2A2A2A), RoundedCornerShape(32.dp))
+ * )
+ *
+ *
+ *           + also:
+ *
+ *
+ *    Animate any knob (blur, dx, dy, spread, color) with animate*AsState; the modifier keeps up.
+ *
+ */
+
+/** Attach any number of [Shadow]s to this node – zero platform code. */
+fun Modifier.shadowCustom(
+    vararg shadows: Shadow,
+    shape: Shape = RectangleShape,
+    clipContent: Boolean = false,
+): Modifier = this.then(
+    Modifier.drawWithContent {
+        // 1) OUTER shadows – fake by drawing coloured rects, then blurring them
+        shadows.filter { !it.inset }.forEach { s ->
+            drawIntoCanvas { canvas ->
+                val spreadPx = s.spread.toPx()
+                val rect = Rect(
+                    left = -spreadPx + s.dx.toPx(),
+                    top = -spreadPx + s.dy.toPx(),
+                    right = size.width + spreadPx + s.dx.toPx(),
+                    bottom = size.height + spreadPx + s.dy.toPx()
+                )
+                canvas.save()
+                canvas.clipPath(Path().apply { addOutline(shape.createOutline(size, layoutDirection, this@drawWithContent)) }, ClipOp.Difference)
+                canvas.drawRect(rect, Paint().apply { color = s.color })
+                canvas.restore()
+            }
+        }
+
+        // 2) draw original content
+        drawContent()
+
+        // 3) INNER shadows – draw coloured rect *inside*, invert with saveLayer α-inversion, blur
+        shadows.filter { it.inset }.forEach { s ->
+            val spreadPx = s.spread.toPx()
+            val insetRect = Rect(
+                left = spreadPx + s.dx.toPx(),
+                top = spreadPx + s.dy.toPx(),
+                right = size.width - spreadPx + s.dx.toPx(),
+                bottom = size.height - spreadPx + s.dy.toPx()
+            )
+
+            drawIntoCanvas { canvas ->
+                // isolate
+                canvas.saveLayer(bounds = insetRect, paint = Paint())
+                // hole punch
+                canvas.drawRect(insetRect, Paint().apply { color = s.color })
+                // keep only intersection
+                canvas.clipPath(Path().apply { addOutline(shape.createOutline(size, layoutDirection, this@drawWithContent)) })
+                canvas.restore()
+            }
+        }
+    }.blur(   // one blur pass per *layer*; keep radii small for perf
+        radius = shadows.maxOfOrNull { it.blur } ?: 0.dp,
+        edgeTreatment = BlurredEdgeTreatment.Unbounded
+    )
+).let { if (clipContent) it.clip(shape) else it }
+
+
+//give me the version for this function that does it inwards (it's this one innit ? ) and outwards, in 2 versions.
+//
+//
+//Could we use this to achieve an insane and complementing effect for skeumorphism even, with transparency gradient across them also applied
+//
+//
+
+
+// endregion
+
+// region Button with custom shadow
+@Composable
+fun ButtonCustomShadow(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val shape = RoundedCornerShape(28.dp)
+
+    /* 1 - shadows */
+    val outerGlow = Shadow(
+        color = Color.White.copy(alpha = .55f),
+        blur = 24.dp,         // softness
+        spread = 6.dp,          // reaches further out
+        dy = (-2).dp,       // slight top bias
+    )
+    val innerDrop = Shadow(
+        color = Color.Black.copy(alpha = .45f),
+        blur = 14.dp,
+        inset = true,
+        dy = 2.dp
+    )
+
+    /* 2 - body gradient + gloss */
+    val bodyGrad = Brush.verticalGradient(
+        listOf(Color(0xFF474747), Color(0xFF2E2E2E))
+    )
+    val gloss = Brush.verticalGradient(
+        0f to Color.White.copy(alpha = .35f),
+        .45f to Color.Transparent,
+        1f to Color.Transparent
+    )
+
+    Box(
+        modifier
+            .shadowCustom(outerGlow, innerDrop, shape = shape)
+            .background(bodyGrad, shape)
+            .drawWithContent {
+                drawContent()                   // button fill
+                drawRoundRect(                 // glossy strip
+                    brush = gloss,
+                    cornerRadius = CornerRadius(28.dp.toPx())
+                )
+            }
+            .clickable(onClick = onClick)
+            .padding(horizontal = 32.dp, vertical = 18.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(text.uppercase(), color = Color.White, fontSize = 18.sp)
+    }
+}
 // endregion
