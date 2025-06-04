@@ -156,8 +156,7 @@ private fun AuthenticatedPane(
                 .constrainAs(bottom) {
                     top.linkTo(topConstrain.bottom)
                     start.linkTo(parent.start, margin = 12.dp)
-                }
-                .padding(12.dp)
+                }.padding(12.dp)
                 .zIndex(12f),
             cornerRadius = 58.dp,
         ) {

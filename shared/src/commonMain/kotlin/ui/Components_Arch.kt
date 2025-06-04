@@ -413,6 +413,7 @@ fun ButtonCustomShadow(
         modifier
             .shadowCustom(outerGlow, innerDrop, shape = shape)
             .background(bodyGrad, shape)
+            .border(1.dp, Color.White.copy(alpha = .12f), shape) // ← chef’s-kiss bevel
             .drawWithContent {
                 drawContent()                   // button fill
                 drawRoundRect(                 // glossy strip
