@@ -365,15 +365,6 @@ fun Modifier.shadowCustom(
     )
 ).let { if (clipContent) it.clip(shape) else it }
 
-
-//give me the version for this function that does it inwards (it's this one innit ? ) and outwards, in 2 versions.
-//
-//
-//Could we use this to achieve an insane and complementing effect for skeumorphism even, with transparency gradient across them also applied
-//
-//
-
-
 // endregion
 
 // region Button with custom shadow
