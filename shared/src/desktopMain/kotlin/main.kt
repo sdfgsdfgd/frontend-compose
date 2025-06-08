@@ -1,5 +1,3 @@
-package net.sdfgsdfg
-
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -21,9 +19,9 @@ import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.WindowState
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
-import net.sdfgsdfg.platform.LocalWindowMetrics
-import net.sdfgsdfg.platform.rememberWindowMetrics
-import ui.login.AppDirs
+import platform.LocalWindowMetrics
+import platform.rememberWindowMetrics
+import ui.MainScreen
 import java.awt.Toolkit
 
 fun main() = application {

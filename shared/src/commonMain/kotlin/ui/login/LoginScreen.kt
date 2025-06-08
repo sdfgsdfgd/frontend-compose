@@ -1,5 +1,6 @@
-package net.sdfgsdfg.ui.login
+package ui.login
 
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -9,11 +10,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.material.Button
-import androidx.compose.material.MaterialTheme
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -32,19 +32,26 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.constraintlayout.compose.ConstraintLayout
 import data.GithubApi
+import data.model.GithubRepoDTO
+import data.model.GithubUser
+import domain.AuthManager
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.datetime.Clock
+import kotlinx.datetime.Instant
+import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
+import kotlinx.datetime.format
+import kotlinx.datetime.format.MonthNames
+import kotlinx.datetime.format.char
 import kotlinx.datetime.toLocalDateTime
-import net.sdfgsdfg.data.AuthManager
-import net.sdfgsdfg.platform.LocalPlatformContext
-import net.sdfgsdfg.ui.SkeuoText
-import net.sdfgsdfg.ui.SkeuoButton
-import ui.login.BrowserLauncher
+import platform.BrowserLauncher
+import platform.LocalPlatformContext
+import ui.GlassCard
+import ui.Gold
+import ui.SkeuoButton
+import ui.SkeuoText
 import ui.login.model.AuthState
-import ui.login.model.GithubRepo
-import ui.login.model.GithubUser
 
 @Composable
 fun LoginScreen(
@@ -57,33 +64,35 @@ fun LoginScreen(
     var busy by remember { mutableStateOf(false) }
 
     val authState by AuthManager.state.collectAsState()
-    var repos by remember { mutableStateOf<List<GithubRepo>>(emptyList()) }
+    var repos by remember { mutableStateOf<List<GithubRepoDTO>>(emptyList()) }
 
-    // kick off bootstrap once
     LaunchedEffect(Unit) { AuthManager.bootstrap() }
     LaunchedEffect(authState) {
         println("LoginScreen authState -> $authState")
         val successState = (authState as? AuthState.Authenticated)
 
         if (successState?.token?.scope?.contains("repo") == true) {
-            repos = runCatching { GithubApi.listUserRepos() }
-                .getOrElse {
-                    println("Failed to fetch repos: $it")
-                    emptyList()
-                }.also {
-                    println("----------------------------------------\n\nFetched ${it.size} repos for user ${successState.user.name} \n")
-                    it.forEachIndexed { i, repo ->
-                        println("Repo #$i: ${repo.name} (${repo.id})")
-                    }
+            repos = GithubApi.listUserRepos().also {
+                println("${Gold}----------- Fetched ${it.size} repos for user ${successState.user.name}\u001B[0m ---")
+
+                it.forEachIndexed { i, repo ->
+                    println("Repo #$i: ${repo.name} (${repo.id})")
                 }
+            }
         }
     }
 
     Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         when (authState) {
-            is AuthState.Unauthenticated -> Button(
-                enabled = !busy,
-                onClick = {
+            is AuthState.Unauthenticated ->
+                SkeuoButton(
+                    text = "Login with GitHub",
+                    textColor = Color.White.copy(alpha = 0.4f), // Color(0xFF191192), // .copy(alpha = 0.6f), // Color(0x33FFFFFF), // .copy(alpha = .65f),
+                    modifier = Modifier.padding(12.dp).zIndex(12f),
+                    cornerRadius = 58.dp,
+                    baseTint = Color(0x010101).copy(alpha = 0.4f),
+                    sweepTint = Color(0x313131).copy(alpha = 0.2f),
+                ) {
                     scope.launch {
                         busy = true // TODO: add loader & anims for state changes
 
@@ -92,7 +101,6 @@ fun LoginScreen(
                         busy = false
                     }
                 }
-            ) { Text(if (busy) "Connecting…" else "Login with GitHub") }
 
             is AuthState.Error -> TODO()
             is AuthState.Authenticated -> AuthenticatedPane(
@@ -107,13 +115,15 @@ fun LoginScreen(
 @Composable
 private fun AuthenticatedPane(
     auth: AuthState.Authenticated,
-    repos: List<GithubRepo>,
+    repos: List<GithubRepoDTO>,
     onAuthed: (AuthState.Authenticated) -> Unit
 ) {
     LaunchedEffect(auth) { onAuthed(auth) } // notify parent once
+    // todo: make sure deep-diff works with repo commits, and this triggers with `repos` updates
+    val ordered = remember(repos) { repos.sortedByDescending { Instant.parse(it.updatedAt) } }
 
     ConstraintLayout {
-        val (topConstrain, bottom) = createRefs()
+        val (topConstrain) = createRefs()
 
         Row(Modifier.fillMaxSize().constrainAs(topConstrain) {
             top.linkTo(parent.top)
@@ -123,19 +133,60 @@ private fun AuthenticatedPane(
         ) {
             LazyColumn(
                 modifier = Modifier
-                    .width(260.dp)
+                    .widthIn(max = 620.dp)
                     .fillMaxHeight()
-                    .padding(12.dp)
+                    .padding(horizontal = 12.dp)
+                    .padding(top = 32.dp)
             ) {
-                itemsIndexed(items = repos) { i, repo ->
-                    Text(
-                        text = repo.name,
-                        style = MaterialTheme.typography.body2,
-                        color = Color.White,
+                itemsIndexed(items = ordered) { i, repo ->
+                    GlassCard(
+                        selected = repo.name.contains("kaangpt"),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(vertical = 4.dp)
-                    )
+//                            .height(60.dp)                // fixed height
+                            .padding(vertical = 5.dp)
+                            .animateContentSize()
+                            .animateItem(),
+                        onClick = { println("yallah yallah") }
+                    ) {
+                        Column(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+                            horizontalAlignment = Alignment.Start
+                        ) {
+                            SkeuoText(
+                                text = "${i + 1}:  ${repo.name} ",
+                                fontSize = 34.sp,
+                                textColor = Color.Yellow.copy(alpha = 0.75f), // Color(0xddFFD966), // Color.Yellow,
+                                modifier = Modifier.wrapContentWidth().align(Alignment.CenterHorizontally)//.align(Alignment.Top)
+                            )
+                            if (repo.description?.isNotBlank() == true) Spacer(Modifier.height(16.dp))
+                            SkeuoText(
+                                repo.description.orEmpty(),
+                                fontSize = 18.sp,
+                                textColor = Color(0xee898989),
+                                modifier = Modifier.wrapContentWidth().align(Alignment.Start)
+                            )
+                            if (repo.description?.isNotBlank() == true) Spacer(Modifier.height(4.dp))
+                            Text(
+                                text = " 🫆 ${repo.language ?: "Unknown"}   ✨   ${repo.stars}     · · ⏰ · ·       ${
+                                    Instant.parse(repo.updatedAt)                              // ISO string → Instant
+                                        .toLocalDateTime(TimeZone.currentSystemDefault())      // local time
+                                        .format(                                               // pretty -> “4 May 2025 · 16:54”
+                                            LocalDateTime.Format {
+                                                dayOfMonth(); char(' ')
+                                                monthName(MonthNames.ENGLISH_ABBREVIATED); char(' ')
+                                                year(); chars(" · ")
+                                                hour(); char(':'); minute()
+                                            }
+                                        )
+                                }     · · ⏰ · ·",
+                                fontSize = 14.sp,
+                                color = Color(0x88B0B0B0),
+                                modifier = Modifier.wrapContentWidth().align(Alignment.Start)
+                            )
+                            // todo-2: color coded   <3h (green)  <1w (yellow)  >1w (red)
+                        }
+                    }
                 }
             }
 
@@ -148,19 +199,6 @@ private fun AuthenticatedPane(
             ) {
                 NeonWelcome(auth.user)
             }
-        }
-
-        SkeuoButton(
-            text = "hi how are you",
-            modifier = Modifier
-                .constrainAs(bottom) {
-                    top.linkTo(topConstrain.bottom)
-                    start.linkTo(parent.start, margin = 12.dp)
-                }.padding(12.dp)
-                .zIndex(12f),
-            cornerRadius = 58.dp,
-        ) {
-            println("Magic button clicked!")
         }
     }
 }

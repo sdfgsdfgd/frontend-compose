@@ -1,4 +1,4 @@
-package net.sdfgsdfg.ui
+package ui
 
 import android.graphics.RuntimeShader
 import android.os.Build

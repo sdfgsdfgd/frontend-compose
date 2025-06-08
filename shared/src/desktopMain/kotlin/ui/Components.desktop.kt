@@ -1,4 +1,4 @@
-package net.sdfgsdfg.ui
+package ui
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember

@@ -8,7 +8,13 @@ pluginManagement {
     }
 }
 
+// ... was required by hot reload ?...
+plugins {
+    id("org.gradle.toolchains.foojay-resolver-convention") version "0.10.0"
+}
+
 dependencyResolutionManagement {
+    @Suppress("UnstableApiUsage")
     repositories {
         google()
         mavenCentral()
@@ -16,24 +22,4 @@ dependencyResolutionManagement {
 }
 
 include(":shared")
-//include(":desktop")
-//include(":android")
 include(":ios")
-
-//
-// xx Where we are going
-//
-// settings.gradle.kts
-// ├── :shared         ← KMP, owns ALL logic + shared resources
-// ├── :androidApp     ← Android + Compose
-// ├── :desktopApp     ← Compose-Desktop JVM
-// └── :iosApp         ← dumb wrapper Xcode project (Gradle only builds KMP framework)
-//
-//
-// xx Inside shared/ only:
-//
-// src/commonMain/kotlin/**         <— every multiplatform class
-// src/commonMain/resources/**      <— earth.webp, strings, etc.
-// src/androidMain/kotlin/**
-// src/desktopMain/kotlin/**
-// src/iosMain/kotlin/**

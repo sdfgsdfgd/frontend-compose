@@ -1,4 +1,4 @@
-package net.sdfgsdfg.utils
+package utils
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking

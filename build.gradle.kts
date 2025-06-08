@@ -8,4 +8,5 @@ plugins {
     alias(libs.plugins.jetbrainsCompose)    apply false  // todo: confirm unnecssry?
     alias(libs.plugins.androidLib)          apply false
     alias(libs.plugins.androidApp)          apply false
+    alias(libs.plugins.composeHotReload)    apply false
 }

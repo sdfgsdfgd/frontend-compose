@@ -1,4 +1,4 @@
-package net.sdfgsdfg.platform
+package platform
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.compositionLocalOf

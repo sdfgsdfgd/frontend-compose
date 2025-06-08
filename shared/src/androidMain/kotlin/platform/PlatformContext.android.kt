@@ -1,11 +1,8 @@
-package net.sdfgsdfg.platform
+package platform
 
 import android.content.Context
-import androidx.compose.runtime.Composable
 import androidx.compose.runtime.ProvidableCompositionLocal
 import androidx.compose.runtime.staticCompositionLocalOf
-import androidx.compose.ui.platform.LocalContext
-import androidx.core.net.toUri
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import net.sdfgsdfg.resources.Res
@@ -14,15 +11,6 @@ import org.jetbrains.compose.resources.DrawableResource
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 
-fun DrawableResource.playablePath(ctx: Context): String =
-    "android.resource://${ctx.packageName}/${
-        ctx.resources.getIdentifier(
-            this::class.simpleName, "drawable", ctx.packageName
-        )
-    }"
-
-//
-//
 //
 //
 // xx UNUSED

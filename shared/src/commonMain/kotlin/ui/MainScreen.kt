@@ -1,4 +1,4 @@
-package net.sdfgsdfg
+package ui
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -13,13 +13,11 @@ import androidx.compose.ui.unit.max
 import androidx.compose.ui.zIndex
 import androidx.constraintlayout.compose.ConstraintLayout
 import androidx.constraintlayout.compose.Dimension
-import net.sdfgsdfg.platform.Video
-import net.sdfgsdfg.platform.WindowMetrics
 import net.sdfgsdfg.resources.Res
 import net.sdfgsdfg.resources.earth
-import net.sdfgsdfg.ui.GapFadeStrip
-import net.sdfgsdfg.ui.login.LoginScreen
-import net.sdfgsdfg.ui.videoVignette
+import platform.Video
+import platform.WindowMetrics
+import ui.login.LoginScreen
 
 @Composable
 fun MainScreen(
@@ -45,10 +43,8 @@ fun MainScreen(
                     bottom.linkTo(video.top)
                     start.linkTo(parent.start)
                     end.linkTo(parent.end)
-//                    width = Dimension.wrapContent
-//                    height = Dimension.wrapContent
+                    height = Dimension.matchParent
                     verticalBias = 0.35f
-//                    horizontalBias = 0.5f
                 }.zIndex(1f)
             ) {
                 println("onAuthenticated  === ===[ ${it.user.name} ]=== ===")
@@ -63,8 +59,6 @@ fun MainScreen(
                 }.fillMaxWidth()
                     .height(videoHeight)
                     .videoVignette()
-//                    .wrapContentSize(Alignment.BottomCenter)
-//                    .clipToBounds()
 //                    .aspectRatio(matchHeightConstraintsFirst = true, ratio = 16f / 9f)
             ) {
                 Video(
@@ -78,17 +72,15 @@ fun MainScreen(
             Box(
                 modifier = Modifier.constrainAs(gradient) {
                     top.linkTo(parent.top)
-                    bottom.linkTo(video.top)          // bottom flush with video’s top edge
+                    bottom.linkTo(video.top)
                     start.linkTo(parent.start)
                     end.linkTo(parent.end)
-                    height = Dimension.fillToConstraints   // stretch to cover the whole gap
+                    height = Dimension.fillToConstraints
                 }.fillMaxWidth()
             ) {
-                GapFadeStrip(blurRadius = 24.dp)
+                FadeStrip(blurRadius = 24.dp)
             }
         }
-
 //        temporaryOverlays()
     }
 }
-

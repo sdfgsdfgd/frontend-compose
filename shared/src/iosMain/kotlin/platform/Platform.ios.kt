@@ -1,4 +1,4 @@
-package net.sdfgsdfg.platform
+package platform
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.ProvidableCompositionLocal
@@ -12,8 +12,11 @@ import androidx.compose.ui.viewinterop.UIKitView
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.readValue
 import kotlinx.cinterop.useContents
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.SharedFlow
 import net.sdfgsdfg.resources.Res
 import net.sdfgsdfg.resources.allDrawableResources
+import okio.Path
 import org.jetbrains.compose.resources.DrawableResource
 import platform.AVFoundation.AVPlayer
 import platform.AVFoundation.AVPlayerLayer
@@ -88,4 +91,29 @@ actual fun Video(
             view                                            // ← return the UIView
         }
     )
+}
+
+actual object BrowserLauncher {
+    actual fun open(url: String, platformCtx: Any) {}
+}
+
+actual fun sha256(bytes: ByteArray): ByteArray {
+    TODO("Not yet implemented")
+}
+
+actual object DeepLinkHandler {
+    private val ch = Channel<String>(Channel.CONFLATED)
+    actual val uriFlow: SharedFlow<String> = TODO() /*ch.receiveAsFlow().stateIn( */
+}
+
+actual val REDIRECT: String
+    get() = TODO("Not yet implemented")
+actual val STATE_PREFIX: String
+    get() = TODO("Not yet implemented")
+
+actual object AppDirs {
+    actual val path: Path
+        get() = TODO("Not yet implemented")
+    actual fun init(platformCtx: Any?) {
+    }
 }

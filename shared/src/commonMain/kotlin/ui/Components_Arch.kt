@@ -1,4 +1,4 @@
-package net.sdfgsdfg.ui
+package ui
 
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
@@ -278,7 +278,7 @@ private var _powerSettingsIcon: ImageVector? = null
 
 // endregion
 
-// region Customized Shadow Button
+// region Shadow modifier  ( on anything )
 @Immutable
 data class Shadow(
     val color: Color = Color.Black,

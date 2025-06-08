@@ -6,6 +6,7 @@ plugins {
     alias(libs.plugins.androidApp)
     alias(libs.plugins.jetbrainsCompose)      // brings compose.* aliases
     alias(libs.plugins.kotlinSerialization)
+    alias(libs.plugins.composeHotReload)
 }
 
 kotlin {
@@ -102,14 +103,14 @@ android {
         versionName     = "0.1"
     }
     buildFeatures { compose = true }
+    @Suppress("UnstableApiUsage")
     experimentalProperties["android.experimental.kmp.enableAndroidResources"] = true
 }
 
-/* xx Errors out, because jvm needs to be standalone ?? find out why this fix required
-    (o3 suggested this) https://chatgpt.com/c/68281a29-d068-800c-b9ad-f78eb989d5c0  ---------- */
+/* xx  ------- (o3 suggested this) https://chatgpt.com/c/68281a29-d068-800c-b9ad-f78eb989d5c0  ---------- */
 gradle.projectsEvaluated {
-    tasks.findByName("desktopRun")                // <-- now it exists
-        ?.let { (it as JavaExec).mainClass.set("net.sdfgsdfg.MainKt") }
+    tasks.findByName("desktopRun")
+        ?.let { (it as JavaExec).mainClass.set("MainKt") }
 }
 
 compose.desktop {
@@ -121,7 +122,6 @@ compose.desktop {
                 TargetFormat.Msi,
                 TargetFormat.Deb
             )
-            packageName = "net.sdfgsdfg"
             packageVersion = "1.0.0"
         }
     }

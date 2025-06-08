@@ -1,5 +1,6 @@
 package data
 
+import domain.AuthManager
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.plugins.ClientRequestException
@@ -12,7 +13,6 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.json.Json
-import net.sdfgsdfg.data.AuthManager
 import ui.login.model.AuthState
 
 object ApiClient {
@@ -40,7 +40,7 @@ object ApiClient {
 
 private val AuthHeader = createClientPlugin("AuthHeader") {
     onRequest { request, _ ->
-        request.headers.remove(HttpHeaders.Authorization)          // start clean
+        request.headers.remove(HttpHeaders.Authorization)
 
         (AuthManager.state.value as? AuthState.Authenticated)
             ?.token?.accessToken

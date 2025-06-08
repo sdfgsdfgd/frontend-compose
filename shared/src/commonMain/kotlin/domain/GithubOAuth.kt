@@ -1,5 +1,9 @@
-package ui.login
+package domain
 
+import data.model.AccessToken
+import data.model.AuthRequest
+import data.model.GithubEmail
+import data.model.GithubUser
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.engine.cio.CIO
@@ -20,36 +24,29 @@ import io.ktor.http.Parameters
 import io.ktor.http.URLBuilder
 import io.ktor.http.Url
 import io.ktor.serialization.kotlinx.json.json
-import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.first
-import okio.Path
 import kotlinx.serialization.json.Json
-import ui.login.model.AccessToken
-import ui.login.model.AuthRequest
+import platform.DeepLinkHandler
+import platform.PKCE
+import platform.REDIRECT
+import platform.STATE_PREFIX
 import ui.login.model.AuthState
-import ui.login.model.GithubEmail
-import ui.login.model.GithubUser
-import kotlin.io.encoding.Base64
-import kotlin.io.encoding.ExperimentalEncodingApi
-
-expect val REDIRECT: String        // the URI sent to GitHub
-expect val STATE_PREFIX: String    // "", "mob-", etc.
 
 object GithubOAuth {
     private const val CLIENT_ID = "Ov23libLAx2DZVS5FeM4"
     private const val CLIENT_SECRET = "1b28eb97612c885f785558b82cf92ab033480af4"
 
+    // xx 2nd client because we want custom client w/ oauth headers only for Github related flows
     private val http = HttpClient(CIO) {
         install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
         expectSuccess = true
 
         install(Logging) {
             logger = Logger.SIMPLE
-            level  = LogLevel.ALL
+            level = LogLevel.ALL
         }
     }
 
-    /* ───────────────────────  Step-0 : URL build  ─────────────────────── */
     fun buildAuthRequest(): AuthRequest {
         val pkce = PKCE.new()
         val state = STATE_PREFIX + buildString {
@@ -67,23 +64,20 @@ object GithubOAuth {
         return AuthRequest(url, pkce)
     }
 
-    /* ───────────────────────  Step-1 : token + user  ───────────────────── */
     suspend fun awaitToken(req: AuthRequest): AuthState = runCatching {
         val callback = DeepLinkHandler.uriFlow.first()
-        val code     = Url(callback).parameters["code"]!!
+        val code = Url(callback).parameters["code"]!!
 
         val token: AccessToken = http.post("https://github.com/login/oauth/access_token") {
             header(HttpHeaders.Accept, "application/json")
             setBody(FormDataContent(Parameters.build {
-                append("client_id",     CLIENT_ID)
+                append("client_id", CLIENT_ID)
                 append("client_secret", CLIENT_SECRET)
-                append("code",          code)
+                append("code", code)
                 append("code_verifier", req.pkce.value)
             }))                                                           // send form-encoded body
         }.body()
 
-
-        /* -> optional e-mail / user info grab right away */
         val user: GithubUser = http.get("https://api.github.com/user") {
             header(HttpHeaders.Authorization, "Bearer ${token.accessToken}")
             accept(ContentType.Application.Json)
@@ -96,71 +90,26 @@ object GithubOAuth {
             }.body<List<GithubEmail>>()
         }.getOrElse { emptyList() }
 
-        /* -------- pretty log block -------- */
         println(
             """
         ┏━ GitHub OAuth Success ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        ┃  access_token : ${token.accessToken.take(8)}… (len=${token.accessToken.length})
-        ┃  token_type   : ${token.tokenType}
-        ┣━ Scope ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        ┃  scope        : ${token.scope}
+        ┃  access_token     : ${token.accessToken.take(8)}… (len=${token.accessToken.length})
+        ┃  token_type       : ${token.tokenType}
+        ┣━ Scope ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        ┃  scope            : ${token.scope}
         ┣━ User ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        ┃  login        : ${user.login}
-        ┃  id           : ${user.id}
-        ┃  name         : ${user.name ?: "—"}
-        ┃  primary mail : ${emails.firstOrNull { it.primary }?.email ?: "—"}
-        ┃  avatar_url   : ${user.avatarUrl}
-        ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        """.trimIndent()
+        ┃  login            : ${user.login}
+        ┃  id               : ${user.id}
+        ┃  name             : ${user.name ?: "—"}
+        ┃  avatar_url       : ${user.avatarUrl}
+        ┃  primary mail     : ${emails.firstOrNull { it.primary }?.email ?: "—"}
+        ┃  secondary mails  : ${emails.filterNot { it.primary }.joinToString(", ") { it.email }}
+        ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━""".trimIndent()
         )
 
         AuthState.Authenticated(token, user, emails)
-    }.getOrElse { AuthState.Error(it) }
-}
-
-// BrowserLauncher:  Interface to open a URL in the system's default browser
-expect object BrowserLauncher {
-    fun open(url: String, platformCtx: Any)
-}
-
-expect object AppDirs {
-    /** Call once per process (noop on desktop) */
-    fun init(platformCtx: Any? = null)
-
-    /** Absolute, per-user, per-app directory – valid after `init` */
-    val path: Path
-}
-
-// region Crypto / Helpers.
-// PKCE (Proof Key for Code Exchange) is a security measure to prevent authorization code interception attacks.
-object PKCE {
-    private const val ALPHA = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~"
-
-    data class Verifier(val value: String, val challenge: String)
-
-    fun new(): Verifier {
-        val verifier = buildString(64) { repeat(64) { append(ALPHA.random()) } }
-
-        val challenge = sha256(verifier.encodeToByteArray()).base64Url()
-
-        return Verifier(verifier, challenge)
+    }.getOrElse {
+        println("GitHub OAuth failed: ${it.message}")
+        AuthState.Error(it)
     }
 }
-
-//////////////////////////////////////////////////////////////////
-// Helpers – all commonMain, JVM-free
-//////////////////////////////////////////////////////////////////
-expect fun sha256(bytes: ByteArray): ByteArray          // ← actuals per target
-
-@OptIn(ExperimentalEncodingApi::class)
-private fun ByteArray.base64Url(): String =
-    Base64.UrlSafe.encode(this)
-// endregion
-
-// region Deep Link Handler
-expect object DeepLinkHandler {
-    /** Emit full redirect URI when our custom scheme hits. */
-    val uriFlow: SharedFlow<String>
-}
-
-// endregion

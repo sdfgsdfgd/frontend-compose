@@ -1,10 +1,13 @@
-package ui.login
+package domain
 
 import androidx.datastore.core.okio.OkioStorage
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.PreferencesSerializer
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.stringPreferencesKey
+import data.model.AccessToken
+import data.model.GithubEmail
+import data.model.GithubUser
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -15,23 +18,23 @@ import kotlinx.serialization.json.Json
 import okio.FileSystem
 import okio.Path
 import okio.SYSTEM
-import ui.login.model.AccessToken
-import ui.login.model.CachedSession
-import ui.login.model.GithubEmail
-import ui.login.model.GithubUser
+import platform.AppDirs
 
-object TokenStore {
-
+object DataStore {
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
 
-    /** File lives in the current working directory alongside the exe/JAR  */
-    private fun prefsPath(): Path = AppDirs.path / "github_prefs.preferences_pb"
+    /** xx    `AppDirs`  -->  platform specific paths !
+     *
+     *  Slack discussion on it  ( for ultimate solutions ):
+     *   https://kotlinlang.slack.com/archives/C01D6HTPATV/p1747178681489469
+     * */
+    private fun prefsPath(): Path = AppDirs.path / ".github_prefs.preferences_pb"
 
     private val store = PreferenceDataStoreFactory.create(
         storage = OkioStorage(
             serializer  = PreferencesSerializer,
             fileSystem  = FileSystem.SYSTEM,
-            producePath = ::prefsPath
+            producePath = DataStore::prefsPath
         ),
         scope = scope
     )
@@ -60,9 +63,17 @@ object TokenStore {
         val scp = p[SCOPES] ?: ""
         val usr = p[USER ]?.let { Json.decodeFromString<GithubUser>(it) } ?: return@map null
         val eml = p[EMAILS]?.let { Json.decodeFromString<List<GithubEmail>>(it) } ?: emptyList()
+
         CachedSession(tok, scp, usr, eml)
     }.firstOrNull()
 
     /* ── clear ────────────────────────────────────────────────────── */
     fun clear() = scope.launch { store.updateData { emptyPreferences() } }
 }
+
+data class CachedSession(
+    val token:  String,              // raw access-token
+    val scope:  String,              // space-separated scopes
+    val user: GithubUser,
+    val emails: List<GithubEmail>
+)

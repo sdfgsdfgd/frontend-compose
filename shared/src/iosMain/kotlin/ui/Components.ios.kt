@@ -1,7 +1,6 @@
-package net.sdfgsdfg.ui
+package ui
 
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 
 @Composable

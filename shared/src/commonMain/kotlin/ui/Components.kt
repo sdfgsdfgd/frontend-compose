@@ -1,4 +1,6 @@
-package net.sdfgsdfg.ui
+@file:Suppress("unused")
+
+package ui
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Easing
@@ -10,24 +12,26 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.animateIntAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.Button
-import androidx.compose.material.MaterialTheme
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -49,6 +53,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.TileMode
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.pointer.pointerInput
@@ -65,64 +70,82 @@ import net.sdfgsdfg.resources.Res
 import net.sdfgsdfg.resources.compose_multiplatform
 import org.jetbrains.compose.resources.painterResource
 
-// region Buttons & Texts
+const val Gold = "\u001B[38;5;214m"
+
+// region ────[ Button & Text ]────────────────────────────────────────────────────────────
 /**
- * Ultra‑skeuomorphic 3‑D text:
- *   • light highlight top‑left
- *   • dark drop‑shadow bottom‑right
- *   • subtle vertical steel‑like gradient fill
+ * Jewel‑grade bevel text (no shaders, pure Compose).
+ * Layers
+ *   1. **Halo** – soft outer bloom that hugs glyph edges
+ *   2. **Rim light** – razor‑thin top highlight
+ *   3. **Body** – vertical steel‑like gradient + drop shadow
+ *   4. **Inner shadow** – crisp letter‑press crease
  */
 @Composable
 fun SkeuoText(
     text: String,
+    textColor: Color = Color(0xFFE3E3E3),   // neutral steel
     fontSize: TextUnit,
     modifier: Modifier = Modifier,
-    fontFamily: FontFamily = FontFamily.Serif
+    fontFamily: FontFamily = FontFamily.Serif,
 ) {
+    /* shared metrics ------------------------------------------------ */
+    val base = TextStyle(fontSize = fontSize, fontFamily = fontFamily)
+    val hi = textColor.lighten2(0.6f)                   // rim light
+    val hi2 = textColor.lighten2(0.2f)                   // rim2 light
+    val mid = textColor                     // face
+    val lo = textColor.darken2(.45f)       // shadowed base
+
+    /* steel-like body fill */
     val fill = Brush.verticalGradient(
-        listOf(
-            Color(0xFFFDFDFD),
-            Color(0xFFE6E6E6),
-            Color(0xFFC8C8C8)
-        )
+        0.00f to hi.copy(alpha = .85f),
+        0.20f to hi2.copy(alpha = .65f),
+        0.60f to mid,
+        1.00f to lo
     )
-    Box(modifier = modifier.graphicsLayer { clip = false }) {
 
-        // dark soft shadow
+    Box(modifier.graphicsLayer { clip = false }) {
+        /* ─ 1  halo (soft outer bloom) – sits *under* everything ─ */
         Text(
             text = text,
-            fontSize = fontSize,
-            fontFamily = fontFamily,
-            color = Color.Black.copy(alpha = 0.55f),
-            modifier = Modifier
-                .offset(2.dp, 2.dp)
-                .blur(2.dp)
+            style = base,
+            color = hi.copy(alpha = .14f),
+            modifier = Modifier.blur(4.dp)
         )
 
-        // highlight rim
+        /* ─ 2  main body with drop shadow ─ */
         Text(
             text = text,
-            fontSize = fontSize,
-            fontFamily = fontFamily,
-            color = Color.White.copy(alpha = 0.8f),
-            modifier = Modifier
-                .offset((-2).dp, (-2).dp)
-                .blur(1.5.dp)
-        )
-
-        // main body
-        Text(
-            text = text,
-            fontSize = fontSize,
-            fontFamily = fontFamily,
-            style = TextStyle(
-                brush = fill,
-                shadow = Shadow(
-                    color = Color.Black.copy(alpha = 0.15f),
-                    offset = Offset(0f, 1f),
-                    blurRadius = 6f
+            style = base.merge(
+                TextStyle(
+                    brush = fill,
+                    shadow = Shadow(
+                        color = Color.Black.copy(alpha = .60f),
+                        offset = Offset(0f, 2f),
+                        blurRadius = 4f
+                    )
                 )
             )
+        )
+
+        /* ─ 3  inner shadow (letter-press crease) ─ */
+        Text(
+            text = text,
+            style = base,
+            color = Color.Black.copy(alpha = .90f),
+            modifier = Modifier
+                .offset(y = 1.dp)
+                .blur(1.dp)
+        )
+
+        /* ─ 4  rim highlight – razor edge catching the light ─ */
+        Text(
+            text = text,
+            style = base,
+            color = hi.copy(alpha = .25f),
+            modifier = Modifier
+                .offset(x = (-2).dp, y = (-3.5).dp)
+                .blur(4.8.dp)
         )
     }
 }
@@ -138,37 +161,38 @@ fun SkeuoText(
 @Composable
 fun SkeuoButton(
     text: String,
+    textColor: Color = Color.DarkGray.copy(alpha = .4f),
     modifier: Modifier = Modifier,
     // palette --------------------------------------------------------
     baseTint: Color = Color.Black.copy(alpha = .4f),
     bevelLight: Color = Color.DarkGray.copy(alpha = .30f),
-    bevelDark:  Color = Color.Black.copy(alpha = .10f),
-    sweepTint:  Color = Color.DarkGray.copy(alpha = .70f),
+    bevelDark: Color = Color.Black.copy(alpha = .10f),
+    sweepTint: Color = Color.DarkGray.copy(alpha = .70f),
     cornerRadius: Dp = 32.dp,
     onClick: () -> Unit,
 ) {
     /* ─────────── state ─────────── */
     var pressed by remember { mutableStateOf(false) }
-    val pressOffsetPx  by animateIntAsState(if (pressed)  8 else 16)
-    val pressBlur      by animateDpAsState(if (pressed) 16.dp else  24.dp)
-    val pressScale     by animateFloatAsState(if (pressed) .98f else 1f)
+    val pressOffsetPx by animateIntAsState(if (pressed) 8 else 16)
+    val pressBlur by animateDpAsState(if (pressed) 16.dp else 24.dp)
+    val pressScale by animateFloatAsState(if (pressed) .98f else 1f)
 
 
     // ( 1 ) Magic 1: body/background gradient
-    var shape    = RoundedCornerShape(cornerRadius)
+    val shape = RoundedCornerShape(cornerRadius)
     val background = Brush.verticalGradient(
         0f to baseTint.lighten(.20f),
         1f to baseTint.darken(.55f)
     )
 
     // ( 2 ) Magic 2: Bevel gradient
-    val bevel    = Brush.verticalGradient(listOf(bevelLight, bevelDark))
+    val bevel = Brush.verticalGradient(listOf(bevelLight, bevelDark))
     val rCorner = with(LocalDensity.current) { CornerRadius(cornerRadius.toPx()) }
 
     /* travelling sweep */
     val sweepX by rememberInfiniteTransition().animateFloat(
         initialValue = -0.4f,
-        targetValue  =  1.4f,
+        targetValue = 1.4f,
         animationSpec = infiniteRepeatable(tween(22000, easing = FastOutSlowInEasing), repeatMode = RepeatMode.Reverse)
     )
 
@@ -179,8 +203,7 @@ fun SkeuoButton(
             .graphicsLayer {
                 scaleX = pressScale; scaleY = pressScale
                 shadowElevation = 6.dp.toPx()
-                clip   = false
-                shape  = shape
+                clip = false
             }
             .pointerInput(Unit) {
                 detectTapGestures(
@@ -195,9 +218,8 @@ fun SkeuoButton(
         contentAlignment = Alignment.Center
     ) {
 
-        val dynBlur   by animateDpAsState(if (pressed) 24.dp  else 34.dp)
+        val dynBlur by animateDpAsState(if (pressed) 24.dp else 34.dp)
         val dynAlphaT by animateFloatAsState(if (pressed) .18f else .15f)   // top
-        val dynAlphaB by animateFloatAsState(if (pressed) .35f else .25f)   // bottom
 
         /* TOP light-shadow */
         // xx old version, no longer used
@@ -273,16 +295,16 @@ fun SkeuoButton(
                     )
 
                     /* travelling sweep */
-                    val barW  = size.width * .12f
-                    val x0    = size.width * sweepX - barW / 2
+                    val barW = size.width * .12f
+                    val x0 = size.width * sweepX - barW / 2
                     drawRoundRect(
                         Brush.linearGradient(
-                            0f   to Color.Transparent,
+                            0f to Color.Transparent,
                             0.35f to sweepTint,
                             0.65f to sweepTint.copy(alpha = .12f),
-                            1f   to Color.Transparent,
+                            1f to Color.Transparent,
                             start = Offset(x0, 0f),
-                            end   = Offset(x0 + barW, size.height)
+                            end = Offset(x0 + barW, size.height)
                         ),
                         cornerRadius = rCorner,
                         blendMode = BlendMode.Lighten
@@ -291,13 +313,21 @@ fun SkeuoButton(
         )
 
         /* label */
-        Text(
-            text.uppercase(),
-            fontFamily = FontFamily.Serif,
-            color = Color.Black.copy(alpha = .75f),
-            style = MaterialTheme.typography.button,
+//        Text(
+//            text.uppercase(),
+//            fontFamily = FontFamily.Serif,
+//            color = textColor,
+//            style = MaterialTheme.typography.button,
+//            fontSize = 24.sp,
+//            letterSpacing = 0.85.sp,
+//            modifier = Modifier.align(Alignment.Center)
+//                .padding(horizontal = 48.dp, vertical = 16.dp)
+//        )
+        SkeuoText(
+            text = text,
+            textColor = textColor,
             fontSize = 24.sp,
-            letterSpacing = 0.85.sp,
+//            fontFamily = FontFamily.Cursive,
             modifier = Modifier.align(Alignment.Center)
                 .padding(horizontal = 48.dp, vertical = 16.dp)
         )
@@ -306,22 +336,22 @@ fun SkeuoButton(
 
 /* tiny color helpers */
 private fun Color.lighten(f: Float) = lerp(this, Color.White, f)
-private fun Color.darken(f: Float)  = lerp(this, Color.Black, f)
+private fun Color.darken(f: Float) = lerp(this, Color.Black, f)
 
 /* ─ helpers ─ */
 private fun Color.lighten2(frac: Float) =
     Color(
-        red   = red   + (1f - red)   * frac,
+        red = red + (1f - red) * frac,
         green = green + (1f - green) * frac,
-        blue  = blue  + (1f - blue)  * frac,
+        blue = blue + (1f - blue) * frac,
         alpha = alpha
     )
 
 private fun Color.darken2(frac: Float) =
     Color(
-        red   = red   * (1f - frac),
+        red = red * (1f - frac),
         green = green * (1f - frac),
-        blue  = blue  * (1f - frac),
+        blue = blue * (1f - frac),
         alpha = alpha
     )
 
@@ -344,19 +374,209 @@ expect fun rememberShader(
 ): Brush
 // endregion
 
+// region ────[ Card ]────────────────────────────────────────────────────────────
+/* ── GlassCard.kt ─────────────────────────────────────────────── */
+@Composable
+fun GlassCard(
+    selected: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit = {},
+    content: @Composable BoxScope.() -> Unit
+) {
+    /* progress 0‒1 ------------------------------------------------------ */
+    val p by animateFloatAsState(
+        if (selected) 1f else 0f,
+        spring(dampingRatio = .55f, stiffness = 80f),
+        label = "selectProgress"
+    )
+
+    Box(
+        modifier.drawBehind {
+            /* ────────────────────────────────────────────────────────────────── */
+            /* 1 ─ glass body ──────────────────────────────────────────────── */
+            /* ────────────────────────────────────────────────────────────────── */
+            val rDp = 14.dp                       // shared corner radius
+            val ice = Color(0xFF8FB5DA)      // cyan hit-light
+            val r = rDp.toPx()
+            val stroke = (0.6).dp.toPx()
+
+            /* 1A  left-to-right tint (stronger on very left, vanishes by 30 %) */
+            drawRoundRect(
+                brush = Brush.horizontalGradient(
+                    0f to ice.copy(alpha = .26f),
+                    .44f to Color.Transparent,
+                    .85f to ice.copy(alpha = .16f),
+                    1f to Color.Transparent
+                ),
+                cornerRadius = CornerRadius(r, r)
+            )
+
+            /* 1B  cyan bloom bleeding from the bevel (bigger & softer) */
+            drawRoundRect(
+                brush = Brush.radialGradient(
+                    colors = listOf(
+                        ice.copy(alpha = .30f),
+                        Color.Transparent
+                    ),
+                    center = Offset(r * .9f, r * .9f),   // <─ centre of the glow
+                    radius = r * 2.2f                    // <─ softness / reach
+                ),
+                blendMode = BlendMode.Plus,
+                cornerRadius = CornerRadius(r, r)
+            )
+
+
+            /* 1C  razor-thin central specular (gives curved-glass sheen) */
+            drawRoundRect(
+                brush = Brush.verticalGradient(
+                    0f to Color.Transparent,
+                    .04f to Color.Transparent,
+                    .11f to Color.White.copy(alpha = .12f),
+                    .44f to Color.Transparent,
+                    .44f to Color.Transparent,
+                    .56f to Color.Transparent,
+                    .88f to ice.copy(alpha = .01f),
+                    1f to Color.Transparent
+                ),
+                blendMode = BlendMode.Lighten,
+                cornerRadius = CornerRadius(r, r)
+            )
+
+            /* ── 2 bevel + finishing touches  ──────────────────────────────────── */
+
+            /* 2.3  BEVEL STACK — bright rim → transparent gap → dark crease → gap → icy inner */
+            val rimStroke = stroke
+            val gap = (1.8).dp.toPx()
+
+            var inset = 0f
+            var rad = r
+
+            // 2.3a bright outer rim
+            inset += gap
+            rad -= gap
+            drawRoundRect(
+                color = Color.White.copy(.12f + .10f * p),
+                topLeft = Offset(inset, inset),
+                size = Size(size.width - 2 * inset, size.height - 2 * inset),
+                style = Stroke(rimStroke),
+                cornerRadius = CornerRadius(rad, rad)
+            )
+
+            // 2.3b transparent air gap
+            inset += gap
+            rad -= gap
+
+            // 2.3c dark crease
+            drawRoundRect(
+                color = Color.Black.copy(.30f),
+                topLeft = Offset(inset, inset),
+                size = Size(size.width - 2 * inset, size.height - 2 * inset),
+                style = Stroke(rimStroke),
+                cornerRadius = CornerRadius(rad, rad)
+            )
+
+            // 2.3d second transparent gap
+            inset += gap
+            rad -= gap
+
+            // 2.3e icy inner rim – fade by 110° instead of 135°
+            drawRoundRect(
+                brush = Brush.rimSweep(
+                    highlight = Color(0xFFC9E9FF),
+                    spanDeg = 340f,
+                    centerDeg = 120f,            // brightest at top
+                    alphaMax = .84f,
+                    seamAlpha = .01f,            // tiny colour at the seam so it never vanishes
+                ),
+                topLeft = Offset(inset, inset),
+                size = Size(size.width - 2 * inset, size.height - 2 * inset),
+                style = Stroke(rimStroke),
+                cornerRadius = CornerRadius(rad, rad)
+            )
+
+            /* 2.4. RIM-EDGE SPECULAR (top-left only) */
+            drawArc(
+                color = Color.White.copy(.48f),
+                startAngle = 180f,   // left
+                sweepAngle = 65f,    // to top
+                useCenter = false,
+                topLeft = Offset(inset, inset),
+                size = Size(size.width - inset * 2, size.height - inset * 2),
+                style = Stroke(width = 0.2f)
+            )
+        }.clickable(onClick = onClick)
+    ) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .padding(horizontal = 20.dp, vertical = 10.dp),
+            contentAlignment = Alignment.Center,
+            content = content,
+        )
+    }
+}
+
+/**
+ * Build a sweep brush whose alpha rises with [easing] then falls with the
+ * mirrored easing — perfect for rim-lighting that fades out smoothly on both
+ * ends and leaves the seam transparent.
+ *
+ * @param highlight   the colour at full intensity
+ * @param spanDeg     total arc in degrees that receives the highlight
+ * @param alphaMax    peak alpha inside the span
+ * @param easing      shaped ramp; default = FastOutSlowIn
+ */
+fun Brush.Companion.rimSweep(
+    highlight: Color,
+    spanDeg: Float = 320f,          // how wide the bright arc is
+    centerDeg: Float = 120f,        // where it’s brightest (0° = right, CCW)
+    alphaMax: Float = .60f,
+    seamAlpha: Float = .08f,        // tiny colour at the seam so it never vanishes
+    easing: Easing = FastOutSlowInEasing,
+): Brush {
+    // ----- convert angles to normalized t 0‒1
+    val span = spanDeg.coerceIn(1f, 360f)
+    val halfArc = span / 2f
+    val startDeg = (centerDeg - halfArc + 360f) % 360f
+    val endDeg = (centerDeg + halfArc) % 360f
+    fun d2t(d: Float) = d / 360f          // deg → [0,1]
+
+    // ----- eased alpha at ¼ & ¾ points to get a smooth shoulder
+    val shoulder = easing.transform(0.4f)          // 0.4 gives nice curve
+    val alphaPeak = alphaMax
+    val alphaEdge = alphaMax * shoulder
+
+    return sweepGradient(
+        0f to highlight.copy(alpha = seamAlpha),  // 0° = seam
+        d2t(startDeg) to highlight.copy(alpha = alphaEdge),
+        d2t(centerDeg) to highlight.copy(alpha = alphaPeak),
+        d2t(endDeg) to highlight.copy(alpha = alphaEdge),
+        1f to highlight.copy(alpha = seamAlpha)   // 360° = same
+    )
+}
+
+// endregion
+
 // region ────[ Timings  ( Actual Magic ) ]────────────────────────────────────────────────────────────
 /**
  * Two-stage ramp:
  *   ① 0-knee  : darkA → midA   (super-gentle linear fade)
  *   ② knee-1  : midA  → lightA (eased, fast drop-off)
+ *
+ *
+ *          notto: mainly was for eased TransparencY GradienT, butcanbeforanything
+ *
+ *   [ The Knee ] is not a hard cut, but a smooth transition.
  */
+val SlowOutFastInEasing = Easing { t -> 1 - FastOutSlowInEasing.transform(1 - t) }
 private fun buildStops(
     totalStops: Int = 1024,
-    knee:      Float = 0.66f,   // 22 % of the strip = slow zone
-    lightA:    Float = .02f,    // 0.02% opacity practically gone at top
-    midA:      Float = .90f,    // ~90 % opacity when we hit the knee
-    darkA:     Float = .99f,    // 99 % at very bottom
-    tailEase:  Easing = FastOutSlowInEasing
+    knee: Float = 0.66f,   // 22 % of the strip = slow zone
+    lightA: Float = .02f,    // 0.02% opacity practically gone at top
+    midA: Float = .90f,    // ~90 % opacity when we hit the knee
+    darkA: Float = .99f,    // 99 % at very bottom
+//    tailEase:  Easing = FastOutSlowInEasing
+    tailEase: Easing = SlowOutFastInEasing // SlowOutFastInEasing (inverted)
 ): Array<Pair<Float, Color>> =
     Array(totalStops + 1) { i ->
         val p = i / totalStops.toFloat()          // 0‒1 along strip
@@ -369,7 +589,7 @@ private fun buildStops(
             // Stage-2: eased plunge to full transparency
             val t = (p - knee) / (1 - knee)       // 0‒1 inside fast zone
             val e = tailEase.transform(t)
-            midA  + (lightA - midA) * e           // .60 → .02 rapidly
+            midA + (lightA - midA) * e           // .60 → .02 rapidly
         }
 
         p to Color.Black.copy(alpha = a)
@@ -380,12 +600,12 @@ private fun buildStops(
 
 /* ── the fade strip as its own composable / layer ────────────── */
 @Composable
-fun GapFadeStrip(blurRadius: Dp = 24.dp) {
+fun FadeStrip(blurRadius: Dp = 24.dp) {
     val stops = remember {
         buildStops(
             totalStops = 1024,
-            darkA   = .995f,
-            lightA  = .04f        // just a ghost at the ceiling
+            darkA = .995f,
+            lightA = .04f        // just a ghost at the ceiling
         )
     }
 
@@ -405,8 +625,6 @@ fun GapFadeStrip(blurRadius: Dp = 24.dp) {
             .blur(blurRadius)
     )
 }
-
-
 
 /* ──────────────────────────────────────────────────────────────── */
 /*  A) vignette that hugs the video rectangle                      */
@@ -496,7 +714,6 @@ fun temporaryOverlays() {
     }
 }
 
-
 fun Modifier.topGradientOverlayOLD(videoTopYDp: Dp, density: Density) = this.then(
     Modifier.drawWithContent {
         drawContent() // Draw the original content
@@ -519,6 +736,5 @@ fun Modifier.topGradientOverlayOLD(videoTopYDp: Dp, density: Density) = this.the
         )
     }
 )
-
 
 // endregion
