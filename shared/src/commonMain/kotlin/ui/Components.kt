@@ -426,7 +426,7 @@ data class GlassStyle(
     val tickStroke: Float = 0.2f                 // px, not dp – keep tiny
 )
 
-/*────────────────────  1.  PAINTER  ──────────────────────────────────────*/
+// TODO-1: clear unused, match properly to inner rims
 /*───────────────────────────────────────────────────────────────────────────────
    glassPainter(…)  –  ONE SKIN TO RULE THEM ALL
    ---------------------------------------------------------------------------
@@ -473,7 +473,7 @@ fun glassPainter(style: GlassStyle = GlassStyle()): GlassPainter = { p, _ ->
     val strokePx = style.rimStroke.toPx() // rim stroke width
 
     /*────────────────────────────────────────────────────────────────────*/
-    /* 1 ▸ GLASS BODY  (tint + bloom + central spec)                     */
+    /* 1 ▸ GLASS BODY  (tint + bloom + central spec)                      */
     /*────────────────────────────────────────────────────────────────────*/
 
     // 1A — smoked-glass lateral shade
@@ -512,7 +512,7 @@ fun glassPainter(style: GlassStyle = GlassStyle()): GlassPainter = { p, _ ->
     )
 
     /*────────────────────────────────────────────────────────────────────*/
-    /* 2 ▸ BEVEL RIMS  (bright → gap → dark → gap → icy)                 */
+    /* 2 ▸ BEVEL RIMS  (bright → gap → dark → gap → icy)                  */
     /*────────────────────────────────────────────────────────────────────*/
     fun rim(step: Int, brush: Brush) = drawRoundRect(
         brush = brush,
@@ -543,7 +543,7 @@ fun glassPainter(style: GlassStyle = GlassStyle()): GlassPainter = { p, _ ->
     )
 
     /*────────────────────────────────────────────────────────────────────*/
-    /* 3 ▸ EDGE TICK  (top-left arc)                                     */
+    /* 3 ▸ EDGE TICK  (top-left arc)                                      */
     /*────────────────────────────────────────────────────────────────────*/
     val off = gapPx * 3                                   // inset matches rim(3)
     drawArc(
@@ -557,9 +557,7 @@ fun glassPainter(style: GlassStyle = GlassStyle()): GlassPainter = { p, _ ->
     )
 }
 
-
 /*────────────────────  2.  MODIFIER  ─────────────────────────────────────*/
-
 fun Modifier.glass(
     painter: GlassPainter = glassPainter(),
     progress: Float = 1f,
@@ -586,8 +584,6 @@ fun Modifier.glass(
             )
     }
 }
-
-
 
 @Composable
 fun GlassCard(
@@ -645,11 +641,6 @@ fun GlassTopBar(
     )
 }
 
-
-
-
-
-
 /**
  * Build a sweep brush whose alpha rises with [easing] then falls with the
  * mirrored easing — perfect for rim-lighting that fades out smoothly on both
@@ -692,6 +683,7 @@ fun Brush.Companion.rimSweep(
 // endregion
 
 // region ────[ Timings  ( Actual Magic ) ]────────────────────────────────────────────────────────────
+val SlowOutFastInEasing = Easing { t -> 1 - FastOutSlowInEasing.transform(1 - t) }
 /**
  * Two-stage ramp:
  *   ① 0-knee  : darkA → midA   (super-gentle linear fade)
@@ -702,7 +694,6 @@ fun Brush.Companion.rimSweep(
  *
  *   [ The Knee ] is not a hard cut, but a smooth transition.
  */
-val SlowOutFastInEasing = Easing { t -> 1 - FastOutSlowInEasing.transform(1 - t) }
 private fun buildStops(
     totalStops: Int = 1024,
     knee: Float = 0.66f,   // 22 % of the strip = slow zone
@@ -739,7 +730,7 @@ fun FadeStrip(blurRadius: Dp = 24.dp) {
         buildStops(
             totalStops = 1024,
             darkA = .995f,
-            lightA = .04f        // just a ghost at the ceiling
+            lightA = .08f        // just a ghost at the ceiling
         )
     }
 
