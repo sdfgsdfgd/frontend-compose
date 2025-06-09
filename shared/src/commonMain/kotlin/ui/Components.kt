@@ -30,10 +30,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.Button
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -52,8 +54,11 @@ import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.TileMode
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.pointer.pointerInput
@@ -70,7 +75,8 @@ import net.sdfgsdfg.resources.Res
 import net.sdfgsdfg.resources.compose_multiplatform
 import org.jetbrains.compose.resources.painterResource
 
-const val Gold = "\u001B[38;5;214m"
+const val GoldUnicode = "\u001B[38;5;214m"
+val Gold = Color(0xFFFFAF00)
 
 // region ────[ Button & Text ]────────────────────────────────────────────────────────────
 /**
@@ -374,147 +380,275 @@ expect fun rememberShader(
 ): Brush
 // endregion
 
-// region ────[ Card ]────────────────────────────────────────────────────────────
-/* ── GlassCard.kt ─────────────────────────────────────────────── */
+// region ────[ **Glass**, GlassCard, GlassTopBar ]────────────────────────────────────────────────────────────
+
+/*───────────────────────────────────────────────────────────────────────────
+   GlassKit – one ultra-lean file, three primitives, infinite reuse
+───────────────────────────────────────────────────────────────────────────*/
+@Immutable
+data class GlassStyle(
+    /* BODY & BLOOM ------------------------------------------------------ */
+    val bodyTint: Color = Color(0xFF8FB5DA),   // main hue
+    val bodyFadeStart: Float = .26f,                // α @ left edge
+    val bodyFadeMid: Float = .16f,                // α near right edge
+    val bloomAlpha: Float = .30f,                // inner bloom strength
+    val bloomRadiusScale: Float = 2.2f,                // bloom radius = r × scale
+    val specularAlpha: Float = .12f,                // peak α of razor specular
+    val specularTail: Float = .01f,                // faint tail α at bottom
+
+    val alpha1: Float = .26f,
+    val alpha2: Float = .0f,
+    val alpha3: Float = .16f,
+    val alpha4: Float = .0f,
+
+    /* BEVEL METRICS ----------------------------------------------------- */
+    val radius: Dp = 14.dp,               // corner radius
+    val cornerRadius: Dp = 14.dp,               // corner radius
+    val rimGap: Dp = 1.8.dp,              // air gap between rims
+    val rimStroke: Dp = 0.6.dp,              // rim stroke width
+
+    /* OUTER RIM GLOW ---------------------------------------------------- */
+    val rimBaseAlpha: Float = .12f,                // when progress = 0
+    val rimGlowDelta: Float = .10f,                // added α at progress = 1
+
+    /* DARK CREASE ------------------------------------------------------- */
+    val creaseAlpha: Float = .30f,
+
+    /* INNER RIM SWEEP --------------------------------------------------- */
+    val innerRimColor: Color = Color(0xFFC9E9FF),
+    val innerRimSpan: Float = 340f,
+    val innerRimCenter: Float = 120f,
+    val innerRimAlpha: Float = .84f,
+
+    /* EDGE TICK --------------------------------------------------------- */
+    val tickAlpha: Float = .48f,
+    val tickSweepDeg: Float = 65f,
+    val tickStroke: Float = 0.2f                 // px, not dp – keep tiny
+)
+
+/*────────────────────  1.  PAINTER  ──────────────────────────────────────*/
+/*───────────────────────────────────────────────────────────────────────────────
+   glassPainter(…)  –  ONE SKIN TO RULE THEM ALL
+   ---------------------------------------------------------------------------
+   A **pure** DrawScope lambda that renders a smoked-glass surface with:
+   1. Body tint  — left-to-right colour fade + radial bloom
+   2. Specular   — razor-thin highlight for curved-glass illusion
+   3. Bevel stack
+        • bright outer rim (animation-ready:   alpha = .12 + .10 × progress)
+        • air gap                                 (lets the rim “float”)
+        • dark crease                             (depth/shadow)
+        • icy inner rim  (sweep-gradient fades 360°)
+   4. Edge tick — tiny white arc on the top-left quadrant
+
+   Tweak knobs
+   ───────────
+   • `color`        body tint + bloom hue
+   • `radius`       corner round-ness (dp)  ← comes from the call site
+   • `progress`     0‒1, drives outer-rim brightness (selection / hover)
+
+   Usage
+   ─────
+       val skin = glassPainter(Color(0xFF8FB5DA))   // cyan-ice
+       Box(
+           Modifier
+               .drawBehind { skin(progress = 1f, radius = 14.dp) }
+       )
+
+   Performance
+   ───────────
+   • All maths done *once* per draw pass; no object allocations inside loops
+   • Compatible with `drawWithCache { onDrawBehind {…} }` if you want caching
+   • Works on any shape/size; caller provides radius & optional slice mask
+
+   @param color   Base tint; affects body gradient, bloom & spec tail
+   @return        A GlassPainter ready for Modifier.drawBehind/Modifier.glass
+───────────────────────────────────────────────────────────────────────────────*/
+typealias GlassPainter = DrawScope.(progress: Float, style: GlassStyle) -> Unit
+
+fun glassPainter(style: GlassStyle = GlassStyle()): GlassPainter = { p, _ ->
+    /* px cache */
+    val rPx = style.radius.toPx()    // corner radius
+    val cornerRadius = style.cornerRadius.toPx()
+    val gapPx = style.rimGap.toPx()    // air gap between rims
+    val strokePx = style.rimStroke.toPx() // rim stroke width
+
+    /*────────────────────────────────────────────────────────────────────*/
+    /* 1 ▸ GLASS BODY  (tint + bloom + central spec)                     */
+    /*────────────────────────────────────────────────────────────────────*/
+
+    // 1A — smoked-glass lateral shade
+    drawRoundRect(
+        brush = Brush.horizontalGradient(
+            0f to style.bodyTint.copy(alpha = style.alpha1),    // left edge tint
+            .44f to Color.Transparent.copy(alpha = style.alpha2),
+            .85f to style.bodyTint.copy(alpha = style.alpha3),  // subtle return on right
+            1f to Color.Transparent.copy(alpha = style.alpha4),
+        ),
+        cornerRadius = CornerRadius(cornerRadius, cornerRadius)
+    )
+
+    // 1B — cyan bloom hugging the TL bevel
+    drawRoundRect(
+        brush = Brush.radialGradient(
+            listOf(style.bodyTint.copy(alpha = .30f), Color.Transparent),
+            center = Offset(rPx * .9f, rPx * .9f),
+            radius = rPx * 2.2f
+        ),
+        blendMode = BlendMode.Plus,
+        cornerRadius = CornerRadius(cornerRadius, cornerRadius)
+    )
+
+    // 1C — razor-thin specular band for curved surface illusion
+    drawRoundRect(
+        brush = Brush.verticalGradient(
+            0f to Color.Transparent,
+            .11f to Color.White.copy(alpha = .12f),
+            .44f to Color.Transparent,
+            .88f to style.bodyTint.copy(alpha = .01f),
+            1f to Color.Transparent
+        ),
+        blendMode = BlendMode.Lighten,
+        cornerRadius = CornerRadius(cornerRadius, cornerRadius)
+    )
+
+    /*────────────────────────────────────────────────────────────────────*/
+    /* 2 ▸ BEVEL RIMS  (bright → gap → dark → gap → icy)                 */
+    /*────────────────────────────────────────────────────────────────────*/
+    fun rim(step: Int, brush: Brush) = drawRoundRect(
+        brush = brush,
+        topLeft = Offset(gapPx * step, gapPx * step),
+        size = Size(
+            size.width - 2 * gapPx * step,
+            size.height - 2 * gapPx * step
+        ),
+        style = Stroke(width = strokePx),
+        cornerRadius = CornerRadius(cornerRadius - gapPx * step, cornerRadius - gapPx * step)
+    )
+
+    // 2a — bright outer rim (animated)
+    rim(1, SolidColor(Color.White.copy(alpha = style.rimBaseAlpha + style.rimGlowDelta * p)))
+
+    // 2b — dark crease for depth
+    rim(2, SolidColor(Color.Black.copy(alpha = .30f)))
+
+    // 2c — icy inner rim (sweep gradient, fades over 340°)
+    rim(
+        3,
+        Brush.rimSweep(
+            highlight = Color(0xFFC9E9FF),
+            spanDeg = 340f,
+            centerDeg = 120f,
+            alphaMax = .84f
+        )
+    )
+
+    /*────────────────────────────────────────────────────────────────────*/
+    /* 3 ▸ EDGE TICK  (top-left arc)                                     */
+    /*────────────────────────────────────────────────────────────────────*/
+    val off = gapPx * 3                                   // inset matches rim(3)
+    drawArc(
+        color = Color.White.copy(alpha = .48f),
+        startAngle = 180f,                                // left
+        sweepAngle = 65f,                                 // up to top
+        useCenter = false,
+        topLeft = Offset(off, off),
+        size = Size(size.width - off * 2, size.height - off * 2),
+        style = Stroke(width = 0.2f)
+    )
+}
+
+
+/*────────────────────  2.  MODIFIER  ─────────────────────────────────────*/
+
+fun Modifier.glass(
+    painter: GlassPainter = glassPainter(),
+    progress: Float = 1f,
+    style: GlassStyle = GlassStyle(),
+    slice: ClosedFloatingPointRange<Float> = 0f..1f
+) = drawBehind {
+    painter(progress, style)        // single call – painter holds everything
+
+    if (slice != 0f..1f) {
+        val topKeep = size.height * slice.start
+        val bottomKeep = size.height * slice.endInclusive
+        if (topKeep > 0f)
+            drawRect(
+                color = Color.Transparent,
+                size = Size(size.width, topKeep),
+                blendMode = BlendMode.Clear
+            )
+        if (bottomKeep < size.height)
+            drawRect(
+                color = Color.Transparent,
+                topLeft = Offset(0f, bottomKeep),
+                size = Size(size.width, size.height - bottomKeep),
+                blendMode = BlendMode.Clear
+            )
+    }
+}
+
+
+
 @Composable
 fun GlassCard(
     selected: Boolean,
     modifier: Modifier = Modifier,
+    style: GlassStyle = GlassStyle(),
     onClick: () -> Unit = {},
     content: @Composable BoxScope.() -> Unit
 ) {
-    /* progress 0‒1 ------------------------------------------------------ */
-    val p by animateFloatAsState(
+    val prog by animateFloatAsState(
         if (selected) 1f else 0f,
-        spring(dampingRatio = .55f, stiffness = 80f),
-        label = "selectProgress"
+        spring(.55f, 80f), label = "glassProgress"
     )
-
     Box(
-        modifier.drawBehind {
-            /* ────────────────────────────────────────────────────────────────── */
-            /* 1 ─ glass body ──────────────────────────────────────────────── */
-            /* ────────────────────────────────────────────────────────────────── */
-            val rDp = 14.dp                       // shared corner radius
-            val ice = Color(0xFF8FB5DA)      // cyan hit-light
-            val r = rDp.toPx()
-            val stroke = (0.6).dp.toPx()
-
-            /* 1A  left-to-right tint (stronger on very left, vanishes by 30 %) */
-            drawRoundRect(
-                brush = Brush.horizontalGradient(
-                    0f to ice.copy(alpha = .26f),
-                    .44f to Color.Transparent,
-                    .85f to ice.copy(alpha = .16f),
-                    1f to Color.Transparent
-                ),
-                cornerRadius = CornerRadius(r, r)
-            )
-
-            /* 1B  cyan bloom bleeding from the bevel (bigger & softer) */
-            drawRoundRect(
-                brush = Brush.radialGradient(
-                    colors = listOf(
-                        ice.copy(alpha = .30f),
-                        Color.Transparent
-                    ),
-                    center = Offset(r * .9f, r * .9f),   // <─ centre of the glow
-                    radius = r * 2.2f                    // <─ softness / reach
-                ),
-                blendMode = BlendMode.Plus,
-                cornerRadius = CornerRadius(r, r)
-            )
-
-
-            /* 1C  razor-thin central specular (gives curved-glass sheen) */
-            drawRoundRect(
-                brush = Brush.verticalGradient(
-                    0f to Color.Transparent,
-                    .04f to Color.Transparent,
-                    .11f to Color.White.copy(alpha = .12f),
-                    .44f to Color.Transparent,
-                    .44f to Color.Transparent,
-                    .56f to Color.Transparent,
-                    .88f to ice.copy(alpha = .01f),
-                    1f to Color.Transparent
-                ),
-                blendMode = BlendMode.Lighten,
-                cornerRadius = CornerRadius(r, r)
-            )
-
-            /* ── 2 bevel + finishing touches  ──────────────────────────────────── */
-
-            /* 2.3  BEVEL STACK — bright rim → transparent gap → dark crease → gap → icy inner */
-            val rimStroke = stroke
-            val gap = (1.8).dp.toPx()
-
-            var inset = 0f
-            var rad = r
-
-            // 2.3a bright outer rim
-            inset += gap
-            rad -= gap
-            drawRoundRect(
-                color = Color.White.copy(.12f + .10f * p),
-                topLeft = Offset(inset, inset),
-                size = Size(size.width - 2 * inset, size.height - 2 * inset),
-                style = Stroke(rimStroke),
-                cornerRadius = CornerRadius(rad, rad)
-            )
-
-            // 2.3b transparent air gap
-            inset += gap
-            rad -= gap
-
-            // 2.3c dark crease
-            drawRoundRect(
-                color = Color.Black.copy(.30f),
-                topLeft = Offset(inset, inset),
-                size = Size(size.width - 2 * inset, size.height - 2 * inset),
-                style = Stroke(rimStroke),
-                cornerRadius = CornerRadius(rad, rad)
-            )
-
-            // 2.3d second transparent gap
-            inset += gap
-            rad -= gap
-
-            // 2.3e icy inner rim – fade by 110° instead of 135°
-            drawRoundRect(
-                brush = Brush.rimSweep(
-                    highlight = Color(0xFFC9E9FF),
-                    spanDeg = 340f,
-                    centerDeg = 120f,            // brightest at top
-                    alphaMax = .84f,
-                    seamAlpha = .01f,            // tiny colour at the seam so it never vanishes
-                ),
-                topLeft = Offset(inset, inset),
-                size = Size(size.width - 2 * inset, size.height - 2 * inset),
-                style = Stroke(rimStroke),
-                cornerRadius = CornerRadius(rad, rad)
-            )
-
-            /* 2.4. RIM-EDGE SPECULAR (top-left only) */
-            drawArc(
-                color = Color.White.copy(.48f),
-                startAngle = 180f,   // left
-                sweepAngle = 65f,    // to top
-                useCenter = false,
-                topLeft = Offset(inset, inset),
-                size = Size(size.width - inset * 2, size.height - inset * 2),
-                style = Stroke(width = 0.2f)
-            )
-        }.clickable(onClick = onClick)
+        modifier
+            .glass(progress = prog, style = style)
+            .clickable(onClick = onClick)
+            .then(modifier)
     ) {
         Box(
-            Modifier
-                .fillMaxSize()
-                .padding(horizontal = 20.dp, vertical = 10.dp),
+            Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 10.dp),
             contentAlignment = Alignment.Center,
-            content = content,
+            content = content
         )
     }
 }
+
+@Composable
+fun GlassTopBar(
+    height: Dp,
+    cutRatio: Float = 0.16f,                      // 16 % trimmed from top
+    modifier: Modifier = Modifier,
+    style: GlassStyle = GlassStyle(bodyTint = Color.Black),
+    progress: Float = 1f,
+    content: @Composable BoxScope.() -> Unit = {}
+) {
+    val painter = remember(style) { glassPainter(style) }  // (Float, Style) -> Unit
+    val stretch = 1f / (1f - cutRatio)                     // e.g. 1/(1-0.16) ≈ 1.19
+
+    Box(
+        modifier
+            .fillMaxWidth()
+            .wrapContentHeight()
+            .drawBehind {
+                withTransform({
+                    scale(1f, stretch, pivot = Offset.Zero)        // ❶ stretch down
+                    translate(0f, -size.height * cutRatio)         // ❷ lift up cut
+                }) {
+                    painter(progress, style)                       // background glass
+                }
+            }
+            .then(modifier),
+        contentAlignment = Alignment.Center,
+        content = content
+    )
+}
+
+
+
+
+
 
 /**
  * Build a sweep brush whose alpha rises with [easing] then falls with the

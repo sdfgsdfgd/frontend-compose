@@ -1,6 +1,7 @@
 package ui.login
 
 import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -48,7 +49,9 @@ import kotlinx.datetime.toLocalDateTime
 import platform.BrowserLauncher
 import platform.LocalPlatformContext
 import ui.GlassCard
-import ui.Gold
+import ui.GlassStyle
+import ui.GlassTopBar
+import ui.GoldUnicode
 import ui.SkeuoButton
 import ui.SkeuoText
 import ui.login.model.AuthState
@@ -73,7 +76,7 @@ fun LoginScreen(
 
         if (successState?.token?.scope?.contains("repo") == true) {
             repos = GithubApi.listUserRepos().also {
-                println("${Gold}----------- Fetched ${it.size} repos for user ${successState.user.name}\u001B[0m ---")
+                println("${GoldUnicode}----------- Fetched ${it.size} repos for user ${successState.user.name}\u001B[0m ---")
 
                 it.forEachIndexed { i, repo ->
                     println("Repo #$i: ${repo.name} (${repo.id})")
@@ -123,10 +126,34 @@ private fun AuthenticatedPane(
     val ordered = remember(repos) { repos.sortedByDescending { Instant.parse(it.updatedAt) } }
 
     ConstraintLayout {
-        val (topConstrain) = createRefs()
+        val (topBar, body) = createRefs()
 
-        Row(Modifier.fillMaxSize().constrainAs(topConstrain) {
+        Box(Modifier.fillMaxWidth().constrainAs(topBar) {
             top.linkTo(parent.top)
+            start.linkTo(parent.start)
+            end.linkTo(parent.end)
+        }) {
+            GlassTopBar(84.dp, style = GlassStyle().copy(
+                bodyTint = Color.Black,
+                bodyFadeStart = 0.56f, bodyFadeMid = 0.76f,
+                bloomAlpha = 0.55f, bloomRadiusScale = 4.2f,
+                specularAlpha = 0.72f, specularTail = 0.01f,
+                innerRimColor = Color.Yellow, rimGap = 1.2.dp,
+                alpha1 = 0.8f, alpha2 = 0.8f, alpha3 = 0.9f, alpha4 = 0.85f,
+                radius = 32.dp, cornerRadius = 26.dp, rimStroke = 2.8.dp, rimBaseAlpha = 0.04f, rimGlowDelta = 0.06f,
+            )) {
+                Column(verticalArrangement = Arrangement.Center) {
+                    Spacer(modifier = Modifier.height(32.dp))
+
+                    SkeuoText(text = "some other content toooooo", fontSize = 34.sp, textColor = Color.DarkGray/*, modifier = Modifier.align(Alignment.Center)*/)
+
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+            }
+        }
+
+        Row(Modifier.fillMaxSize().constrainAs(body) {
+            top.linkTo(topBar.bottom)
             start.linkTo(parent.start, margin = 12.dp)
             end.linkTo(parent.end, margin = 12.dp)
         }
@@ -136,14 +163,13 @@ private fun AuthenticatedPane(
                     .widthIn(max = 620.dp)
                     .fillMaxHeight()
                     .padding(horizontal = 12.dp)
-                    .padding(top = 32.dp)
+//                    .padding(top = 32.dp)
             ) {
                 itemsIndexed(items = ordered) { i, repo ->
                     GlassCard(
                         selected = repo.name.contains("kaangpt"),
                         modifier = Modifier
                             .fillMaxWidth()
-//                            .height(60.dp)                // fixed height
                             .padding(vertical = 5.dp)
                             .animateContentSize()
                             .animateItem(),

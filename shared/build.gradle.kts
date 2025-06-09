@@ -24,10 +24,8 @@ kotlin {
                 implementation(compose.runtime)
                 implementation(compose.foundation)
                 implementation(compose.material)
+                implementation(compose.materialIconsExtended)
                 implementation(compose.components.resources)
-//                implementation(libs.ui.tooling.preview.android)
-//                implementation(libs.androidx.constraintlayout)
-                /// Compose 1.7.3
                 implementation(libs.constraintlayout.compose.multiplatform)
                 implementation(libs.ktor.client.core)
                 implementation(libs.ktor.client.content.negotiation)
