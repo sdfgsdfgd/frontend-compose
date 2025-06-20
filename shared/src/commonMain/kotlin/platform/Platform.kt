@@ -54,8 +54,10 @@ expect object AppDirs {
     val path: Path
 }
 
+//
+// xx Not expect/actual, this is platform-agnostic, simple-singleton object
 // region Crypto / Helpers.
-// PKCE (Proof Key for Code Exchange) is a security measure to prevent authorization code interception attacks.
+// PKCE (Proof Key for Code Exchange) is a security measure to prevent authorization code interception attacks
 object PKCE {
     private const val ALPHA = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~"
 

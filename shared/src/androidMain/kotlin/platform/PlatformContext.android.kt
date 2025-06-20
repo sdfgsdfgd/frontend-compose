@@ -11,33 +11,20 @@ import org.jetbrains.compose.resources.DrawableResource
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 
-//
-//
-// xx UNUSED
-// xx UNUSED
-// xx UNUSED
-// xx UNUSED
-// xx UNUSED
-// xx UNUSED
-// xx UNUSED
-//
-//
-
 /**
- * On Android we just wrap the real `android.content.Context`.
- * You keep the wrapper thin, so it’s cheap.
+ *   On Android we just wrap the real `android.content.Context`.
+ *    keep the wrapper thin, so it’s cheap.
  */
 actual class PlatformContext internal constructor(
     val ctx: Context
 )
 
-actual val LocalPlatformContext: ProvidableCompositionLocal<PlatformContext> =
-    staticCompositionLocalOf {
-        error(
-            "No Android Context provided – wrap your Composable tree in " +
-                    "`CompositionLocalProvider(LocalPlatformContext provides PlatformContext(context))`"
-        )
-    }
+actual val LocalPlatformContext: ProvidableCompositionLocal<PlatformContext> = staticCompositionLocalOf {
+    error(
+        "No Android Context provided – wrap your Composable tree in " +
+                "`CompositionLocalProvider(LocalPlatformContext provides PlatformContext(context))`"
+    )
+}
 
 private val cache = ConcurrentHashMap<DrawableResource, String>()
 
@@ -51,5 +38,3 @@ fun DrawableResource.toPlayablePath(): String = cache.getOrPut(this) {
         }
     }.absolutePath
 }
-
-// xx UNUSED

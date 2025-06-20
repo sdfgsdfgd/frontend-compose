@@ -1,12 +1,19 @@
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
+import org.jetbrains.compose.reload.ComposeHotRun
 
 plugins {
+    // Kotlin
     alias(libs.plugins.kotlinMultiplatform)
-    alias(libs.plugins.compose.compiler)
-    alias(libs.plugins.androidApp)
-    alias(libs.plugins.jetbrainsCompose)      // brings compose.* aliases
     alias(libs.plugins.kotlinSerialization)
+
+    // Compose
+    alias(libs.plugins.jetbrainsCompose)
+    alias(libs.plugins.compose.compiler)
     alias(libs.plugins.composeHotReload)
+
+    // Android
+    alias(libs.plugins.androidApp)
+//    alias(libs.plugins.jetbrainsCompose)      // brings compose.* aliases
 }
 
 kotlin {
@@ -15,7 +22,7 @@ kotlin {
     applyDefaultHierarchyTemplate()
 
     androidTarget()
-    jvm("desktop")
+    jvm("desktop")  // ⇐ generate :shared:run & :shared:desktop* tasks
     iosX64(); iosArm64(); iosSimulatorArm64()
 
     sourceSets {
@@ -41,19 +48,29 @@ kotlin {
         }
         val desktopMain by getting {
             dependencies {
-                implementation(libs.ui.tooling.preview.desktop)
+                // JetBrains Compose artifacts ONLY, supplied by the plugin:
                 implementation(compose.desktop.currentOs)
+                implementation(compose.runtime)
+                implementation(compose.foundation)
+                implementation(compose.material3)
+
+                // Tooling preview for desktop – use JetBrains version (instead of androidx) :
+                implementation(compose.uiTooling)
+//                implementation(libs.ui.tooling.preview.desktop) ? todo: remove, after checking what this was for w/ o3
+
                 implementation(libs.vlcj)
                 implementation(libs.coroutines.core)
                 implementation(libs.ktor.client.cio)
                 implementation(libs.ktor.server.cio)
+                implementation(libs.jnativehook)
+                implementation(libs.kotlinx.coroutines.swing)
             }
         }
 
         val androidMain by getting {
             dependencies {
                 implementation(libs.activity.ktx)
-                implementation(project.dependencies.platform(libs.compose.bom))
+                implementation(project.dependencies.platform(libs.compose.bom))  // AndroidX BOM
                 implementation(libs.androidx.activity.compose)
 
                 // ▶ ExoPlayer / Media3  ( vid )
@@ -75,26 +92,16 @@ kotlin {
         }
     }
 
-    compilerOptions { // this helps suppress some unnecessary beta warnings on actual impls of iOS target and others
+    compilerOptions { // help suppress unnecessary beta warnings on expect/actual s
         freeCompilerArgs.add("-Xexpect-actual-classes")
     }
-
-    // xx https://www.jetbrains.com/help/kotlin-multiplatform-dev/compose-multiplatform-resources-setup.html#resources-in-the-androidlibrary-target
-//    androidLibrary {
-//        // Starting with the Android Gradle plugin version 8.8.0,
-//        // you can use the generated Res class and resource accessors in the androidLibrary target.
-//        experimentalProperties["android.experimental.kmp.enableAndroidResources"] = true
-//
-//        namespace = "net.sdfgsdfg.kaangpt"
-//        compileSdk = 35
-//    }
 }
 
 android {
     namespace           = "net.sdfgsdfg"
     compileSdk          = 35
     defaultConfig {
-        applicationId   = "net.sdfgsdfg"
+        applicationId   = "net.sdfgsdfg.agi-t"
         minSdk          = 24
         targetSdk       = 35
         versionCode     = 1
@@ -105,15 +112,20 @@ android {
     experimentalProperties["android.experimental.kmp.enableAndroidResources"] = true
 }
 
-/* xx  ------- (o3 suggested this) https://chatgpt.com/c/68281a29-d068-800c-b9ad-f78eb989d5c0  ---------- */
 gradle.projectsEvaluated {
-    tasks.findByName("desktopRun")
-        ?.let { (it as JavaExec).mainClass.set("MainKt") }
+    tasks.findByName("desktopRunHot")
+        ?.let { (it as ComposeHotRun).mainClass.set("net.sdfgsdfg.MainKt") }
+}
+
+tasks.withType<ComposeHotRun>().configureEach {
+    mainClass.set("net.sdfgsdfg.MainKt") // hotreload still requires this (or CLI arg as -PmainClass=net.sdfgsdfg.MainKt )
+    args("--auto") // auto detect changes
 }
 
 compose.desktop {
     application {
-        mainClass = "mainKt"
+        mainClass = "net.sdfgsdfg.MainKt"
+
         nativeDistributions {
             targetFormats(
                 TargetFormat.Dmg,
@@ -121,6 +133,21 @@ compose.desktop {
                 TargetFormat.Deb
             )
             packageVersion = "1.0.0"
+            modules("jdk.unsupported")
+
+            macOS {
+                bundleID = "net.sdfgsdfg"
+                mainClass = "net.sdfgsdfg.MainKt"
+
+                infoPlist {                  // inject TCC usage string
+                    extraKeysRawXml = """
+                        <key>NSInputMonitoringUsageDescription</key>
+                        <string>Needed to listen for the Ctrl-Space global shortcut.</string>
+                        <key>NSAppleEventsUsageDescription</key>
+                        <string>Needed to reposition the mouse to the Arcana window.</string>
+                    """.trimIndent()
+                }
+            }
         }
     }
 }
@@ -131,7 +158,6 @@ compose.resources {
     generateResClass = auto
 }
 
-// Very global dependencies to be used rarely, for debug tooling etc...
-dependencies {
+dependencies { // Very global dependencies to be used rarely, for debug tooling etc...
     debugImplementation(compose.uiTooling)
 }
