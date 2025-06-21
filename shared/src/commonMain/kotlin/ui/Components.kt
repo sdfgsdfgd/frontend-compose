@@ -78,6 +78,36 @@ import org.jetbrains.compose.resources.painterResource
 const val GoldUnicode = "\u001B[38;5;214m"
 val Gold = Color(0xFFFFAF00)
 
+// region ───[ Helpers ]────────────────────────────────────────────────────────────
+/* tiny color helpers */
+private fun Color.lighten(f: Float) = lerp(this, Color.White, f)
+private fun Color.darken(f: Float) = lerp(this, Color.Black, f)
+
+/* ─ helpers ─ */
+private fun Color.lighten2(frac: Float) =
+    Color(
+        red = red + (1f - red) * frac,
+        green = green + (1f - green) * frac,
+        blue = blue + (1f - blue) * frac,
+        alpha = alpha
+    )
+
+private fun Color.darken2(frac: Float) =
+    Color(
+        red = red * (1f - frac),
+        green = green * (1f - frac),
+        blue = blue * (1f - frac),
+        alpha = alpha
+    )
+
+/* --- expect helper: each platform supplies its own actual --- */
+@Composable
+expect fun rememberShader(
+    press: Float,
+    sweep: Float,
+): Brush
+// endregion
+
 // region ────[ Button & Text ]────────────────────────────────────────────────────────────
 /**
  * Jewel‑grade bevel text (no shaders, pure Compose).
@@ -318,17 +348,6 @@ fun SkeuoButton(
                 }
         )
 
-        /* label */
-//        Text(
-//            text.uppercase(),
-//            fontFamily = FontFamily.Serif,
-//            color = textColor,
-//            style = MaterialTheme.typography.button,
-//            fontSize = 24.sp,
-//            letterSpacing = 0.85.sp,
-//            modifier = Modifier.align(Alignment.Center)
-//                .padding(horizontal = 48.dp, vertical = 16.dp)
-//        )
         SkeuoText(
             text = text,
             textColor = textColor,
@@ -339,27 +358,6 @@ fun SkeuoButton(
         )
     }
 }
-
-/* tiny color helpers */
-private fun Color.lighten(f: Float) = lerp(this, Color.White, f)
-private fun Color.darken(f: Float) = lerp(this, Color.Black, f)
-
-/* ─ helpers ─ */
-private fun Color.lighten2(frac: Float) =
-    Color(
-        red = red + (1f - red) * frac,
-        green = green + (1f - green) * frac,
-        blue = blue + (1f - blue) * frac,
-        alpha = alpha
-    )
-
-private fun Color.darken2(frac: Float) =
-    Color(
-        red = red * (1f - frac),
-        green = green * (1f - frac),
-        blue = blue * (1f - frac),
-        alpha = alpha
-    )
 
 /* glass body ---------------------------------------------------------- */
 @Composable
@@ -372,12 +370,10 @@ private fun rememberBodyBrush(): Brush = remember {
     )
 }
 
-/* --- expect helper: each platform supplies its own actual --- */
-@Composable
-expect fun rememberShader(
-    press: Float,
-    sweep: Float,
-): Brush
+// endregion
+
+// region ───[ Input Box: Dark, Colorful Clouds + Morphing + Selection Bar ]────────────────────────────────────────────────────────────
+
 // endregion
 
 // region ────[ **Glass**, GlassCard, GlassTopBar ]────────────────────────────────────────────────────────────
