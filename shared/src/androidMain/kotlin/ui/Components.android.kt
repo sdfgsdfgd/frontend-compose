@@ -1,51 +1,57 @@
 package ui
 
-import android.graphics.RuntimeShader
-import android.os.Build
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Shader
-import androidx.compose.ui.graphics.ShaderBrush
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.LayoutDirection
 
 @Composable
-actual fun rememberShader(
-    press: Float,          // ← no longer used, keep for signature
-    sweep: Float,
-): Brush = remember(sweep) {
+actual fun MetaContainer(modifier: androidx.compose.ui.Modifier, cutoff: Float, content: @Composable BoxScope.() -> Unit) {
+}
 
-    /* ── Android 13+ : AGSL sweep bar ─────────────────────────────── */
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-        // language=AGSL
-        val src = """
-            uniform float2 res;   // button width/height  (px)
-            uniform float  sweep; // 0‥1  x-position
+actual fun DrawScope.drawCombinedGradientStroke(
+    path: Path,
+    sweepBrush: Brush,
+    strokeWidthPx: Float,
+    shapeSize: Size,
+    shape: Shape
+) {
+}
 
-            half4 main(float2 frag) {
-                float x = frag.x / res.x;
-                half  a = smoothstep(sweep - .01, sweep + .01, x) * .8;
-                return half4(1.0, 1.0, 1.0, a);  // white streak, α-fade
-            }
-        """.trimIndent()
+actual fun DrawScope.drawShadow(
+    shadow: Shadow,
+    shape: Shape,
+    size: Size,
+    layoutDirection: LayoutDirection,
+    isInner: Boolean,
+) {
+}
 
-        val shader = RuntimeShader(src)
+@Composable
+actual fun androidx.compose.ui.Modifier.blurEffect(radius: Dp): androidx.compose.ui.Modifier = this
 
-        return@remember object : ShaderBrush() {
-            override fun createShader(size: Size): Shader = shader.apply {
-                setFloatUniform("res",   size.width, size.height)
-                setFloatUniform("sweep", sweep)
-            }
-        }
+//
+// ──────────────────────────────────────────────────────────────────────
+// region Liquid Glass
+@Composable
+actual fun androidx.compose.ui.Modifier.liquidGlass(state: LiquidGlassProviderState, style: LiquidGlassStyle): androidx.compose.ui.Modifier = this
+
+actual object DesktopCaptureBridge {
+    init {
+        System.loadLibrary("DesktopCapture")
     }
 
-    /* ── Pre-33 fallback : cheap static linear gradient ───────────── */
-    Brush.linearGradient(
-        colors  = listOf(
-            Color.White.copy(alpha = 0.0f),
-            Color.White.copy(alpha = 0.4f),
-            Color.White.copy(alpha = 0.0f)
-        )
-    )
+    actual external fun hasScreenCapturePermission(): Boolean
+    actual external fun startCapture(callback: FrameCallback)
+    actual external fun createSkiaImageFromIOSurface(surfacePtr: Long, contextPtr: Long): Long
+    actual external fun createImageBitmapFromSkiaImage(skImagePtr: Long): ImageBitmap
 }
+// endregion
+// ──────────────────────────────────────────────────────────────────────
+//

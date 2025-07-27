@@ -98,33 +98,60 @@ kotlin {
 }
 
 android {
-    namespace           = "net.sdfgsdfg"
-    compileSdk          = 35
+    namespace = "net.sdfgsdfg"
+    compileSdk = 35
+
     defaultConfig {
-        applicationId   = "net.sdfgsdfg.agi-t"
-        minSdk          = 24
-        targetSdk       = 35
-        versionCode     = 1
-        versionName     = "0.1"
+        applicationId = "net.sdfgsdfg.agi-t"
+        minSdk = 24
+        targetSdk = 35
+        versionCode = 1
+        versionName = "0.1"
     }
+
     buildFeatures { compose = true }
+
     @Suppress("UnstableApiUsage")
     experimentalProperties["android.experimental.kmp.enableAndroidResources"] = true
 }
 
 gradle.projectsEvaluated {
-    tasks.findByName("desktopRunHot")
-        ?.let { (it as ComposeHotRun).mainClass.set("net.sdfgsdfg.MainKt") }
+    tasks.findByName("desktopRunHot")?.let {
+        (it as ComposeHotRun).mainClass.set("net.sdfgsdfg.MainKt")
+    }
 }
 
 tasks.withType<ComposeHotRun>().configureEach {
     mainClass.set("net.sdfgsdfg.MainKt") // hotreload still requires this (or CLI arg as -PmainClass=net.sdfgsdfg.MainKt )
-    args("--auto") // auto detect changes
+    args("--auto") // todo: duplicate with other one below, remove one
+
+    dependsOn(":macosCaptureNative:assemble") // todo: also copy .dylib to shared/src/commonMain/composeResources/
+//    dependsOn(":macosCaptureNative:linkRelease")   //  todo: research whether these will be needed for crossArch of platfrms
+//    dependsOn(":macosCaptureNative:linkDebug")
+//    dependsOn(":macosCaptureNative:linkDebugSharedArm64")
+//    dependsOn(":macosCaptureNative:linkReleaseSharedArm64")
+    jvmArgs("-Djava.library.path=${nativeLibDir.get().asFile.absolutePath}")
 }
+
+/* -------------------------------------------------------- */
+/* 1.  Tell desktopRun where the dylib lives                */
+/* -------------------------------------------------------- */
+val nativeLibDir = project(":macosCaptureNative")
+    .layout.buildDirectory
+    .dir("lib/main/debug/shared/arm64")
 
 compose.desktop {
     application {
         mainClass = "net.sdfgsdfg.MainKt"
+
+        jvmArgs += listOf(
+//            "-verbose:jni",  // verbose JNI logs for debugging JNI bridges
+//
+//            "-Djava.awt.headless=true", // needed for Skia // xx why tf did I or AI even add this
+//            "-Dcompose.animation.interop.blending=true", // needed for Skia
+//            "/Users/x/Desktop/kotlin/frontend-compose/macosCaptureNative/build/lib/main/debug/arm64/libDesktopCapture.dylib",
+        )
+        args += listOf("--auto") // Compose Hot reload auto-detect changes
 
         nativeDistributions {
             targetFormats(

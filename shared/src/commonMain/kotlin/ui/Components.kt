@@ -1,9 +1,10 @@
-@file:Suppress("unused")
-
 package ui
 
-import androidx.compose.animation.AnimatedVisibility
+import androidx.annotation.FloatRange
+import androidx.compose.animation.core.ArcAnimationSpec
+import androidx.compose.animation.core.EaseInOutCubic
 import androidx.compose.animation.core.Easing
+import androidx.compose.animation.core.ExperimentalAnimationSpecApi
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateDpAsState
@@ -14,45 +15,50 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.CornerBasedShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.Button
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.Stable
+import androidx.compose.runtime.State
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.BlurredEdgeTreatment
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.TileMode
@@ -60,52 +66,42 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.layer.GraphicsLayer
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import net.sdfgsdfg.resources.Res
-import net.sdfgsdfg.resources.compose_multiplatform
-import org.jetbrains.compose.resources.painterResource
-
-const val GoldUnicode = "\u001B[38;5;214m"
-val Gold = Color(0xFFFFAF00)
+import kotlin.jvm.JvmInline
 
 // region ───[ Helpers ]────────────────────────────────────────────────────────────
+const val GoldUnicode = "\u001B[38;5;214m"
+// val Gold = Color(0xFFFFAF00)
+
 /* tiny color helpers */
 private fun Color.lighten(f: Float) = lerp(this, Color.White, f)
 private fun Color.darken(f: Float) = lerp(this, Color.Black, f)
+private fun Color.lighten2(frac: Float) = Color(
+    red = red + (1f - red) * frac,
+    green = green + (1f - green) * frac,
+    blue = blue + (1f - blue) * frac,
+    alpha = alpha
+)
 
-/* ─ helpers ─ */
-private fun Color.lighten2(frac: Float) =
-    Color(
-        red = red + (1f - red) * frac,
-        green = green + (1f - green) * frac,
-        blue = blue + (1f - blue) * frac,
-        alpha = alpha
-    )
+private fun Color.darken2(frac: Float) = Color(
+    red = red * (1f - frac),
+    green = green * (1f - frac),
+    blue = blue * (1f - frac),
+    alpha = alpha
+)
 
-private fun Color.darken2(frac: Float) =
-    Color(
-        red = red * (1f - frac),
-        green = green * (1f - frac),
-        blue = blue * (1f - frac),
-        alpha = alpha
-    )
-
-/* --- expect helper: each platform supplies its own actual --- */
-@Composable
-expect fun rememberShader(
-    press: Float,
-    sweep: Float,
-): Brush
 // endregion
 
 // region ────[ Button & Text ]────────────────────────────────────────────────────────────
@@ -213,6 +209,9 @@ fun SkeuoButton(
     val pressBlur by animateDpAsState(if (pressed) 16.dp else 24.dp)
     val pressScale by animateFloatAsState(if (pressed) .98f else 1f)
 
+    val dynBlur by animateDpAsState(if (pressed) 24.dp else 34.dp)
+    val dynAlphaT by animateFloatAsState(if (pressed) .18f else .15f)   // top
+
 
     // ( 1 ) Magic 1: body/background gradient
     val shape = RoundedCornerShape(cornerRadius)
@@ -224,6 +223,21 @@ fun SkeuoButton(
     // ( 2 ) Magic 2: Bevel gradient
     val bevel = Brush.verticalGradient(listOf(bevelLight, bevelDark))
     val rCorner = with(LocalDensity.current) { CornerRadius(cornerRadius.toPx()) }
+
+    val topShadow = Shadow(
+        color = Color.White.copy(alpha = dynAlphaT),
+        blur = pressBlur,
+        dx = (-16).dp,
+        dy = (-pressOffsetPx * 11 / 10).dp
+    )
+
+    val bottomShadow = Shadow(
+        color = Color.DarkGray.copy(alpha = .2f),
+        blur = pressBlur,
+        dx = 12.dp,
+        dy = pressOffsetPx.dp
+    )
+
 
     /* travelling sweep */
     val sweepX by rememberInfiniteTransition().animateFloat(
@@ -241,6 +255,12 @@ fun SkeuoButton(
                 shadowElevation = 6.dp.toPx()
                 clip = false
             }
+            .shadowCustom(
+                outerShadows = listOf(topShadow, bottomShadow),
+                shape = shape
+            )
+            .background(background, shape)
+            .border(2.dp, bevel, shape)
             .pointerInput(Unit) {
                 detectTapGestures(
                     onPress = {
@@ -253,48 +273,9 @@ fun SkeuoButton(
             },
         contentAlignment = Alignment.Center
     ) {
-
-        val dynBlur by animateDpAsState(if (pressed) 24.dp else 34.dp)
-        val dynAlphaT by animateFloatAsState(if (pressed) .18f else .15f)   // top
-
-        /* TOP light-shadow */
-        // xx old version, no longer used
-//        Box(
-//            Modifier.matchParentSize()
-//                .offset { IntOffset(-6, -pressOffsetPx) }
-//                .blur(pressBlur, BlurredEdgeTreatment.Unbounded)
-//                .background(Color.Gray.copy(alpha = 0.4f), shape)
-//        )
-        Box(
-            Modifier.matchParentSize()
-                .offset { IntOffset(-16, -pressOffsetPx * 2) }      // pull further up
-                .blur(dynBlur, BlurredEdgeTreatment.Unbounded)
-                .drawBehind {
-                    drawRoundRect(
-                        brush = Brush.radialGradient(
-                            0f to Color.White.copy(alpha = dynAlphaT),
-                            1f to Color.Transparent,
-                            center = center.copy(y = -6f),
-                            radius = size.maxDimension * .9f
-                        ),
-                        cornerRadius = rCorner
-                    )
-                }
-        )
-
-        /* BOT dark-shadow */
-        Box(
-            Modifier.matchParentSize()
-                .offset { IntOffset(x = 12, y = pressOffsetPx) }
-                .blur(pressBlur, BlurredEdgeTreatment.Unbounded)
-                .background(Color.DarkGray.copy(alpha = .2f), shape)
-        )
-
         /* body + bevel + gloss + sweep */
         Box(
             Modifier.matchParentSize()
-                .background(background, shape)
-                .border(2.dp, bevel, shape)
                 .drawWithContent {
                     drawContent()
 
@@ -346,6 +327,7 @@ fun SkeuoButton(
                         blendMode = BlendMode.Lighten
                     )
                 }
+
         )
 
         SkeuoText(
@@ -372,7 +354,602 @@ private fun rememberBodyBrush(): Brush = remember {
 
 // endregion
 
-// region ───[ Input Box: Dark, Colorful Clouds + Morphing + Selection Bar ]────────────────────────────────────────────────────────────
+// region ────[ Liquid Glass ]────────────────────────────────────────────────────────────
+fun interface FrameCallback {
+    fun onFrameCaptured(ptr: Long)
+}
+
+expect object DesktopCaptureBridge {
+    fun startCapture(callback: FrameCallback)
+    fun createSkiaImageFromIOSurface(surfacePtr: Long, contextPtr: Long): Long
+    fun createImageBitmapFromSkiaImage(skImagePtr: Long): ImageBitmap
+    fun hasScreenCapturePermission(): Boolean
+}
+
+@Composable
+expect fun Modifier.liquidGlass(
+    state: LiquidGlassProviderState,
+    style: LiquidGlassStyle,
+): Modifier
+
+// Real-time Refraction
+//
+// JNI Hack !
+// LiquidGlass on Desktop&otherplatforms requires gluing screen capture (in mac case Metal/CoreGraphics) into a Compose
+// .mm native Objective-C + Metal Dynamic Library .dylib is in --> [ https://chatgpt.com/g/g-3X6EMarap-x5/c/687a25d2-9f50-832a-8f52-4c94e5d02edd ]
+//
+// Slack Discussion & LiqGlass on Android:  [ https://kotlinlang.slack.com/archives/C0BJ0GTE2/p1752806789218369 ]
+@Composable
+fun LiquidGlassDemo() {
+    val density = LocalDensity.current
+    val rmm = rememberGraphicsLayer()
+    val position = remember { mutableStateOf(Offset.Zero) }
+    val glassState = remember {
+        LiquidGlassProviderState(
+            graphicsLayer = rmm
+        )
+    }
+
+//    println("--kaankaankaankaan--> ${DesktopCaptureBridge.hasScreenCapturePermission()}")
+
+//    Box(
+//        modifier = Modifier
+//            // .drawWithCache {  }  xx Last where we left off, it was saying
+//            //                       1. display (capture) desktop  2. display app content  3. apply then the refraction
+//            .offset { IntOffset(position.value.x.roundToInt(), position.value.y.roundToInt()) }
+//            .size(220.dp)
+//            .graphicsLayer {
+//                compositingStrategy = CompositingStrategy.Offscreen
+//            }
+//            .pointerInput(Unit) {
+//                detectDragGestures { change, dragAmount ->
+//                    position.value += dragAmount
+//                    change.consume()
+//                }
+//            }
+//            .onGloballyPositioned { coords ->
+//                glassState.rect = coords.boundsInRoot()
+//            }
+////                            .background(Color.Yellow, RoundedCornerShape(24.dp))
+//            .liquidGlass(
+//                state = glassState,
+//                style = LiquidGlassStyle(
+//                    innerRefraction = InnerRefraction.Default,
+//                    bleed = Bleed(
+//                        amount = RefractionValue(4.dp),
+//                        blurRadius = 28.dp,
+//                        opacity = 0.8f
+//                    ),
+//                    material = GlassMaterial(
+//                        blurRadius = 14.dp,
+//                        tint = Color.White.copy(alpha = 0.4f),
+//                        contrast = 0.4f,
+//                        whitePoint = 0.2f,
+//                        chromaMultiplier = 1.4f
+//                    ),
+//                    shape = RoundedCornerShape(24.dp),
+//                )
+//            )
+//    )
+}
+
+internal object LiquidGlassShaders {
+
+    private val colorShaderUtils = """
+    const half3 rgbToY = half3(0.2126, 0.7152, 0.0722);
+
+    float luma(half4 color) {
+        return dot(toLinearSrgb(color.rgb), rgbToY);
+    }"""
+
+    internal val sdRectangleShaderUtils = """
+    float sdRectangle(float2 coord, float2 halfSize) {
+        float2 d = abs(coord) - halfSize;
+        float outside = length(max(d, 0.0));
+        float inside = min(max(d.x, d.y), 0.0);
+        return outside + inside;
+    }
+
+    float sdRoundedRectangle(float2 coord, float2 halfSize, float cornerRadius) {
+        float2 innerHalfSize = halfSize - float2(cornerRadius);
+        return sdRectangle(coord, innerHalfSize) - cornerRadius;
+    }
+
+    float2 gradSdRoundedRectangle(float2 coord, float2 halfSize, float cornerRadius) {
+        float2 innerHalfSize = halfSize - float2(cornerRadius);
+        float2 cornerCoord = abs(coord) - innerHalfSize;
+
+        float insideCorner = step(0.0, min(cornerCoord.x, cornerCoord.y)); // 1 if in corner
+        float xMajor = step(cornerCoord.y, cornerCoord.x); // 1 if x is major
+        float2 gradEdge = float2(xMajor, 1.0 - xMajor);
+        float2 gradCorner = normalize(cornerCoord);
+        return sign(coord) * mix(gradEdge, gradCorner, insideCorner);
+    }"""
+
+    private val refractionShaderUtils = """
+    $sdRectangleShaderUtils
+
+    float circleMap(float x) {
+        return 1.0 - sqrt(1.0 - x * x);
+    }
+
+    half4 refractionColor(float2 coord, float2 size, float cornerRadius, float eccentricFactor, float height, float amount) {
+        float2 halfSize = size * 0.5;
+        float2 centeredCoord = coord - halfSize;
+        float sd = sdRoundedRectangle(centeredCoord, halfSize, cornerRadius);
+
+        if (-sd >= height) {
+            return image.eval(coord);
+        }
+
+        sd = min(sd, 0.0);
+        float maxGradRadius = max(min(halfSize.x, halfSize.y), cornerRadius);
+        float gradRadius = min(cornerRadius * 1.5, maxGradRadius);
+        float2 normal = gradSdRoundedRectangle(centeredCoord, halfSize, gradRadius);
+
+        float refractedDistance = circleMap(1.0 - -sd / height) * amount;
+        float2 refractedDirection = normalize(normal + eccentricFactor * normalize(centeredCoord));
+        float2 refractedCoord = coord + refractedDistance * refractedDirection;
+        /*if (refractedCoord.x < 0.0 || refractedCoord.x >= size.x ||
+            refractedCoord.y < 0.0 || refractedCoord.y >= size.y) {
+            return half4(0.0, 0.0, 0.0, 1.0);
+        }*/
+
+        return image.eval(refractedCoord);
+    }"""
+
+    val refractionShaderWithBleedString = """
+    uniform shader image;
+
+    uniform float2 size;
+    uniform float cornerRadius;
+
+    uniform float refractionHeight;
+    uniform float refractionAmount;
+    uniform float eccentricFactor;
+
+    uniform float bleedOpacity;
+
+    $colorShaderUtils
+    $refractionShaderUtils
+
+    half4 main(float2 coord) {
+        half4 color = refractionColor(coord, size, cornerRadius, eccentricFactor, refractionHeight, refractionAmount);
+        float luma = luma(color);
+        color *= 1.0 - bleedOpacity * luma;
+        return color;
+    }"""
+
+    val refractionShaderString = """
+    uniform shader image;
+
+    uniform float2 size;
+    uniform float cornerRadius;
+
+    uniform float refractionHeight;
+    uniform float refractionAmount;
+    uniform float eccentricFactor;
+
+    $colorShaderUtils
+    $refractionShaderUtils
+
+    half4 main(float2 coord) {
+        half4 color = refractionColor(coord, size, cornerRadius, eccentricFactor, refractionHeight, refractionAmount);
+        return color;
+    }"""
+
+    val bleedShaderString = """
+    uniform shader image;
+
+    uniform float2 size;
+    uniform float cornerRadius;
+
+    uniform float eccentricFactor;
+    uniform float bleedAmount;
+
+    $colorShaderUtils
+    $refractionShaderUtils
+
+    half4 main(float2 coord) {
+        half4 color = refractionColor(coord, size, cornerRadius, eccentricFactor, cornerRadius * 3.5, bleedAmount);
+        float luma = luma(color);
+        color.rgb = mix(color.rgb, half3(1.0), 0.5 * circleMap(1.0 - luma));
+        return color;
+    }"""
+
+    val materialShaderString = """
+    uniform shader image;
+
+    uniform float contrast;
+    uniform float whitePoint;
+    uniform float chromaMultiplier;
+
+    $colorShaderUtils
+
+    half4 saturateColor(half4 color, float amount) {
+        half3 linearSrgb = toLinearSrgb(color.rgb);
+        float y = dot(linearSrgb, rgbToY);
+        half3 gray = half3(y);
+        half3 adjustedLinearSrgb = mix(gray, linearSrgb, amount);
+        half3 adjustedSrgb = fromLinearSrgb(adjustedLinearSrgb);
+        return half4(adjustedSrgb, color.a);
+    }
+
+    half4 main(float2 coord) {
+        half4 color = image.eval(coord);
+
+        color = saturateColor(color, chromaMultiplier);
+
+        float3 target = float3(step(0.0, whitePoint));
+        color.rgb = mix(color.rgb, target, abs(whitePoint));
+
+        color.rgb = (color.rgb - 0.5) * (1.0 + contrast) + 0.5;
+
+        return color;
+    }"""
+}
+
+@Composable
+fun rememberLiquidGlassProviderState(
+    backgroundColor: Color?
+): LiquidGlassProviderState {
+    val graphicsLayer = rememberGraphicsLayer()
+    return remember(backgroundColor, graphicsLayer) {
+        LiquidGlassProviderState(
+            graphicsLayer = graphicsLayer
+        )
+    }
+}
+
+@Stable
+class LiquidGlassProviderState internal constructor(
+    internal val graphicsLayer: GraphicsLayer,
+    internal val capturedBitmap: MutableState<ImageBitmap?> = mutableStateOf(null)
+
+) {
+
+    internal var rect: Rect? by mutableStateOf(null)
+}
+
+@Immutable
+data class LiquidGlassStyle(
+    val shape: CornerBasedShape,
+    val innerRefraction: InnerRefraction = InnerRefraction.Default,
+    val material: GlassMaterial = GlassMaterial.Default,
+//    val border: GlassBorder = GlassBorder.Default,
+    val bleed: Bleed = Bleed.None
+)
+
+
+@Immutable
+sealed interface Refraction {
+
+    val height: RefractionValue
+
+    val amount: RefractionValue
+}
+
+@Immutable
+data class InnerRefraction(
+    override val height: RefractionValue,
+    override val amount: RefractionValue,
+    val eccentricFactor: Float = 1f
+) : Refraction {
+
+    companion object {
+
+        @Stable
+        val Default: InnerRefraction =
+            InnerRefraction(
+                height = RefractionValue(8.dp),
+                amount = RefractionValue((-16).dp),
+                eccentricFactor = 1f
+            )
+    }
+}
+
+@Suppress("FunctionName")
+@Stable
+fun RefractionValue(value: Dp): RefractionValue.Fixed {
+    return RefractionValue.Fixed(value)
+}
+
+@Immutable
+sealed interface RefractionValue {
+
+    @Stable
+    fun toPx(density: Density, size: Size): Float
+
+    @Immutable
+    @JvmInline
+    value class Fixed(val value: Dp) : RefractionValue {
+
+        override fun toPx(density: Density, size: Size): Float {
+            return with(density) { value.toPx() }
+        }
+    }
+
+    @Immutable
+    data object Full : RefractionValue {
+
+        override fun toPx(density: Density, size: Size): Float {
+            return -size.minDimension
+        }
+    }
+
+    @Immutable
+    data object Half : RefractionValue {
+
+        override fun toPx(density: Density, size: Size): Float {
+            return -size.minDimension / 2f
+        }
+    }
+
+    @Immutable
+    data object None : RefractionValue {
+
+        override fun toPx(density: Density, size: Size): Float {
+            return 0f
+        }
+    }
+}
+
+@Immutable
+data class Bleed(
+    val amount: RefractionValue = RefractionValue.None,
+    val blurRadius: Dp = 0.dp,
+    @param:FloatRange(from = 0.0, to = 1.0) val opacity: Float = 0f
+) {
+
+    companion object {
+
+        @Stable
+        val None: Bleed = Bleed()
+    }
+}
+
+@Immutable
+data class GlassMaterial(
+    val blurRadius: Dp = 4.dp,
+    val tint: Color = Color.Unspecified,
+    @param:FloatRange(from = -1.0, to = 1.0) val contrast: Float = 0f,
+    @param:FloatRange(from = -1.0, to = 1.0) val whitePoint: Float = 0f,
+    @param:FloatRange(from = 0.0, to = 2.0) val chromaMultiplier: Float = 1.5f
+) {
+
+    companion object {
+
+        @Stable
+        val Default: GlassMaterial = GlassMaterial()
+    }
+}
+// endregion
+
+//  region ────[ Dynamic Island ]────────────────────────────────────────────────────────────
+// xx  Ultimate Shaders / Engine for Fluid
+//  Matsuoka's Fluid Render Engine
+//   -->  https://www.reddit.com/r/GraphicsProgramming/comments/1jh3pd2/splash_a_realtime_fluid_simulation_in_browsers/
+//  - Entire List of How to achieve Matsuoka's xtremely Advanced Fluid Render Engine
+//      https://chatgpt.com/g/g-3X6EMarap-x5?model=gpt-4-5
+//  - Matsuoka - Splash  https://github.com/matsuoka-601/Splash
+//  1. Narrow-Range Fluid Edge
+//  2. Vertex Particle Splash
+//  3. Ray-marched Shadows
+//
+@Composable
+fun FluidMetaBallContainer(
+    isSplit: Boolean,
+    modifier: Modifier = Modifier,
+    blurRadius: Dp = 4.dp,
+    cutoff: Float = 0.5f,
+    islandSize: DpSize = DpSize(160.dp, 24.dp),
+    bubbleSize: DpSize = DpSize(44.dp, 24.dp),
+    splitOffset: Dp = 30.dp,
+    islandContent: @Composable BoxScope.() -> Unit,
+    bubbleContent: @Composable BoxScope.() -> Unit
+) {
+    val offset by animateDpAsState(
+        if (isSplit) splitOffset else 0.dp,
+        tween(durationMillis = 2400, easing = EaseInOutCubic)
+    )
+
+    val totalWidth = islandSize.width + bubbleSize.width + splitOffset
+    val totalHeight = islandSize.height * 2
+
+    MetaContainer(
+        modifier.size(totalWidth, totalHeight),
+        cutoff = cutoff
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            // Blurred shapes behind content (no direct content here)
+            Box(
+                Modifier
+                    .size(islandSize)
+                    .blurEffect(blurRadius)
+                    .background(Color.Black, RoundedCornerShape(islandSize.height / 2))
+            )
+
+            Box(
+                Modifier
+                    .size(bubbleSize)
+                    .offset(x = islandSize.width / 2 + offset)
+                    .blurEffect(blurRadius)
+                    .background(Color.Black, CircleShape)
+            )
+
+            // Clear, unblurred content boxes on top
+            Box(
+                Modifier
+                    .size(islandSize),
+                contentAlignment = Alignment.Center,
+                content = islandContent
+            )
+
+            Box(
+                Modifier
+                    .size(bubbleSize)
+                    .offset(x = islandSize.width / 2 + offset),
+                contentAlignment = Alignment.Center,
+                content = bubbleContent
+            )
+        }
+    }
+}
+
+@Composable
+expect fun Modifier.blurEffect(radius: Dp): Modifier
+
+@Composable
+expect fun MetaContainer(
+    modifier: Modifier = Modifier,
+    cutoff: Float = 0.5f,
+    content: @Composable BoxScope.() -> Unit
+)
+// endregion
+
+// region ───[ Color Cloud Demo    |    Inner+Outer Shadow Demo ]────────────────────────────────────────────────────────────
+
+//────[ Color Cloud ]────────────────────────────────────────────────────────────
+@Composable
+fun ColorCloudDEMO(
+    colors: List<Color> = listOf(Color.Blue, Color.Yellow, Color.Red, Color.Magenta),
+) {
+    val displacement by rememberSweepAnim()
+    val strokeWidthDp by rememberStrokeWidthAnim()
+    val globalAlpha by rememberGlobalAlphaAnim()
+
+    Box(
+        Modifier
+            .width(1280.dp)
+            .height(300.dp)
+            .background(
+                color = Color.Transparent,
+                shape = RoundedCornerShape(84.dp) // ← round corners without aggressive clipping
+            )
+            .colorClouds(
+                shape = RoundedCornerShape(84.dp), // ← round corners without aggressive clipping
+                colors = colors,
+                strokeWidth = strokeWidthDp,
+                displacementDegrees = displacement,
+                coverageDegrees = 360f,
+                fadeDegrees = 32f,
+                globalAlpha = globalAlpha
+            )
+    )
+}
+
+@Composable
+fun rememberSweepAnim(
+    sweepPeriodMs: Int = 42_000,
+    sweepRange: ClosedFloatingPointRange<Float> = 40f..920f,
+    easing: Easing = FastOutSlowInEasing
+): State<Float> {
+    val transition = rememberInfiniteTransition(label = "sweep")
+    return transition.animateFloat(
+        initialValue = sweepRange.start,
+        targetValue = sweepRange.endInclusive,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = sweepPeriodMs, easing = easing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "displacementDeg"
+    )
+}
+
+@OptIn(ExperimentalAnimationSpecApi::class)
+@Composable
+fun rememberStrokeWidthAnim(
+    min: Dp = 28.dp,
+    max: Dp = 38.dp,
+    periodMs: Int = 16_000
+): State<Dp> {
+    val transition = rememberInfiniteTransition(label = "stroke")
+    val animatedFloat = transition.animateFloat(
+        initialValue = min.value,
+        targetValue = max.value,
+        animationSpec = infiniteRepeatable(
+            animation = ArcAnimationSpec(
+                durationMillis = periodMs,
+                easing = FastOutSlowInEasing
+            ),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "strokeWidth"
+    )
+    return derivedStateOf { animatedFloat.value.dp }
+}
+
+
+@Composable
+fun rememberGlobalAlphaAnim(
+    min: Float = 0.20f,
+    max: Float = 1f,
+    periodMs: Int = 3_800
+): State<Float> {
+    val transition = rememberInfiniteTransition(label = "alpha")
+    return transition.animateFloat(
+        initialValue = min,
+        targetValue = max,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = periodMs, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "globalAlpha"
+    )
+}
+
+//────[ Inner & Outer Shadow ]────────────────────────────────────────────────────────────
+@Composable
+fun InnerAndOuterShadowDEMO() {
+    Box(
+        Modifier
+            .size(480.dp)
+            .shadowCustom(
+                outerShadows = listOf(
+                    Shadow(
+                        color = Color.Cyan.copy(alpha = 0.5f),
+                        blur = 32.dp,
+                        spread = 18.dp,
+                        dx = (-20).dp,
+                        dy = (-20).dp
+                    ),
+                    Shadow(
+                        color = Color.Magenta.copy(alpha = 0.2f),
+                        blur = 26.dp,
+                        spread = 34.dp,
+                        dx = (44).dp,
+                        dy = (44).dp
+                    )
+                ),
+                innerShadows = listOf(
+                    Shadow(
+                        color = Color.Black.copy(alpha = 0.5f),
+                        blur = 14.dp,
+                        inset = true,
+                        dx = (-24).dp,
+                        dy = (-38).dp
+                    ),
+                    Shadow(
+                        color = Color.White.copy(alpha = 0.5f),
+                        blur = 16.dp,
+                        inset = true,
+                        dx = 16.dp,
+                        dy = 24.dp
+                    ),
+                    Shadow(
+                        color = Color.Yellow.copy(alpha = 0.4f),
+                        blur = 12.dp,
+                        inset = true,
+                        dx = 22.dp,
+                        dy = 12.dp,
+                        spread = 32.dp
+                    )
+                ),
+                shape = RoundedCornerShape(32.dp)
+            )
+            .background(Color(0x000000).copy(alpha = 0.01f), RoundedCornerShape(32.dp))
+    )
+}
 
 // endregion
 
@@ -678,8 +1255,9 @@ fun Brush.Companion.rimSweep(
 
 // endregion
 
-// region ────[ Timings  ( Actual Magic ) ]────────────────────────────────────────────────────────────
+// region ────[ Easers / Timers - Build Stops (knee etc..)   ( Actual Magic ) ]────────────────────────────────────────────────────────────
 val SlowOutFastInEasing = Easing { t -> 1 - FastOutSlowInEasing.transform(1 - t) }
+
 /**
  * Two-stage ramp:
  *   ① 0-knee  : darkA → midA   (super-gentle linear fade)
@@ -724,9 +1302,9 @@ private fun buildStops(
 fun FadeStrip(blurRadius: Dp = 24.dp) {
     val stops = remember {
         buildStops(
-            totalStops = 1024,
+            totalStops = 256,
             darkA = .995f,
-            lightA = .08f        // just a ghost at the ceiling
+            lightA = .02f        // just a ghost at the ceiling
         )
     }
 
@@ -743,7 +1321,7 @@ fun FadeStrip(blurRadius: Dp = 24.dp) {
                 )
                 onDrawBehind { drawRect(brush) }
             }
-            .blur(blurRadius)
+            .blur(blurRadius)  // xx Unnecessary ? ask o3 , even w/ 64 stops it might be pixel perfect on desktop ?
     )
 }
 
@@ -762,100 +1340,5 @@ fun Modifier.videoVignette() = drawWithContent {
     )
     drawRect(vignette)
 }
-
-// endregion
-
-// region Archive
-
-// Handmade gourmet version
-/* ──────────────────────────────────────────────────────────────── */
-/*  B) vertical fade for any strip-height you give it              */
-/*     • 0-10 %   : opaque black                                   */
-/*     • 10-90 %  : smooth fall-off 80 → 10 % alpha                */
-/*     • 90-100 % : to full-transparent                            */
-/* ──────────────────────────────────────────────────────────────── */
-fun Modifier.verticalGapFade(stripHeight: Dp, density: Density) = drawWithContent {
-    drawContent()
-
-    val hPx = with(density) { stripHeight.toPx() }
-    if (hPx <= 0f) return@drawWithContent
-
-    val fade = Brush.verticalGradient(
-        colorStops = arrayOf(
-            0.00f to Color.Transparent,                 //     window top
-            0.10f to Color.Black.copy(alpha = .05f),
-            0.20f to Color.Black.copy(alpha = .55f),
-            0.30f to Color.Black.copy(alpha = .65f),
-            0.40f to Color.Black.copy(alpha = .75f),
-            0.50f to Color.Black.copy(alpha = .80f),
-            0.60f to Color.Black.copy(alpha = .84f),
-            0.70f to Color.Black.copy(alpha = .87f),
-            0.80f to Color.Black.copy(alpha = .90f),
-            0.90f to Color.Black.copy(alpha = .92f),
-            0.95f to Color.Black.copy(alpha = .95f),
-            1.00f to Color.Black                       // ⬅︎ sits right against the video
-        ),
-        startY = 0f,
-        endY = hPx
-    )
-    drawRect(fade, size = Size(size.width, hPx), topLeft = Offset.Zero)
-}
-
-// xx .................................... temporary .....................
-@Composable
-fun temporaryOverlays() {
-    var showContent by remember { mutableStateOf(false) }
-    var showSettings by remember { mutableStateOf(false) }
-
-    Box(contentAlignment = Alignment.TopCenter) {
-        Column(Modifier.padding(top = 20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-
-            Button(onClick = { showContent = !showContent }) { Text("Click me!") }
-
-            AnimatedVisibility(
-                visible = showContent,
-                enter = fadeIn() + expandVertically()
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Image(
-                        painterResource(Res.drawable.compose_multiplatform),
-                        contentDescription = null
-                    )
-                    Text(
-                        "placeholder",
-                        color = Color.DarkGray,
-                        fontSize = 48.sp,
-                        fontFamily = FontFamily.Cursive
-                    )
-                }
-            }
-
-            Button(onClick = { showSettings = !showSettings }) { Text("Settings") }
-        }
-    }
-}
-
-fun Modifier.topGradientOverlayOLD(videoTopYDp: Dp, density: Density) = this.then(
-    Modifier.drawWithContent {
-        drawContent() // Draw the original content
-
-        // Calculate the height in pixels for the gradient overlay above the video
-        val gradientHeightPx = with(density) { videoTopYDp.toPx() }
-
-        // Create a gradient from almost fully transparent to opaque black
-        val gradient = Brush.verticalGradient(
-            colors = listOf(Color.Black.copy(alpha = 0.0f), Color.Black),
-            startY = 0f,
-            endY = 150f // Fixed endY for consistent rendering across different densities
-        )
-
-        // Draw the gradient overlay starting from the top of the desktop to the top of the video
-        drawRect(
-            brush = gradient,
-            size = Size(size.width, gradientHeightPx),
-            topLeft = Offset(0f, 0f) // Start from the top of the desktop
-        )
-    }
-)
 
 // endregion

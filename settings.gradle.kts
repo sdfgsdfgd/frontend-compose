@@ -23,3 +23,4 @@ dependencyResolutionManagement {
 
 include(":shared")
 include(":ios")
+include(":macosCaptureNative")

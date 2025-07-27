@@ -2,10 +2,10 @@ package data.model
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
-import platform.PKCE
+import platform.PKCECode
 
 /* ───────────────────────  data  ───────────────────── */
-data class AuthRequest(val url: String, val pkce: PKCE.Verifier)
+data class AuthRequest(val url: String, val pkce: PKCECode)
 
 /** Token payload that GitHub returns */
 @Serializable

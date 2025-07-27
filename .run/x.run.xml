@@ -10,7 +10,8 @@
       </option>
       <option name="taskNames">
         <list>
-          <option value=":shared:desktopRunHot" />
+          <option value=":shared:desktopRunHotAsync" />
+          <option value="--auto" />
         </list>
       </option>
       <option name="vmOptions" />

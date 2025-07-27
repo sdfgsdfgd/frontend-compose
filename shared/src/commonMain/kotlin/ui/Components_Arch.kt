@@ -22,19 +22,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.BlurredEdgeTreatment
 import androidx.compose.ui.draw.blur
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.ClipOp
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Paint
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathFillType.Companion.NonZero
 import androidx.compose.ui.graphics.RectangleShape
@@ -44,8 +41,8 @@ import androidx.compose.ui.graphics.StrokeCap.Companion.Butt
 import androidx.compose.ui.graphics.StrokeJoin.Companion.Miter
 import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.addOutline
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.clipPath
-import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
@@ -55,10 +52,27 @@ import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.lerp
 import kotlin.random.Random
+
+// region The Cheatsheet of Layman
+
+/**
+ * | Modifier                                 | Layer          | Use‑Case                                                                                             |
+ * | ---------------------------------------- | -------------- | ---------------------------------------------------------------------------------------------------- |
+ * | `drawBehind { ... }`                     | Behind         | Backgrounds, halos under content, base shapes                                                        |
+ * | `drawWithContent { drawContent(); ... }` | Front          | Overlays, press effects, glow, adornment                                                             |
+ * | `drawWithCache { ... }`                  | Behind/Front\* | Cache brushes, gradients, paths. Use `onDrawBehind` or `onDrawWithContent`. Efficient heavy drawing. |
+ * | `graphicsLayer { ... }`                  | Layer          | Shadows, blur, elevation, transforms, opacity masking                                                |
+ * | `clip(shape)`                            | Mask           | Constrain drawing inside a shape                                                                     |
+ * | `pointerInput { ... }`                   | Input          | Gesture-based custom painting                                                                        |
+ * | `layout { ... }` or `Modifier.layout`    | Layout         | Custom measurement, size, offset manipulation                                                        |
+ *
+ */
+// endregion
 
 // region    ⏻   MetalPowerButton   ⏻
 /**
@@ -73,7 +87,6 @@ import kotlin.random.Random
  *             MetalPowerButton()
  *         }
  */
-@Suppress("unused")
 @Composable
 fun MetalPowerButton() {
     var isPressed by remember { mutableStateOf(false) }
@@ -278,96 +291,43 @@ private var _powerSettingsIcon: ImageVector? = null
 
 // endregion
 
-// region Shadow modifier  ( on anything )
+// region  [ Custom Shadow ]   Modifier   ( on anything )
 @Immutable
 data class Shadow(
     val color: Color = Color.Black,
-    val blur: Dp = 8.dp,
-    val spread: Dp = 0.dp,
-    val dx: Dp = 0.dp,
-    val dy: Dp = 4.dp,
-    val inset: Boolean = false,
+    val blur: Dp = 8.dp,      // softness
+    val spread: Dp = 0.dp,      // grow / shrink before blur
+    val dx: Dp = 0.dp,      // X-offset
+    val dy: Dp = 4.dp,      // Y-offset
+    val inset: Boolean = false    // false = outer, true = inner
 )
 
-/**
- *
- * Usage :
- *
- * Box(
- *     Modifier
- *         .size(160.dp)
- *         .boxShadow(
- *             Shadow(color = Color.Black.copy(.35f), blur = 16.dp, spread = 4.dp, dy = 8.dp),
- *             Shadow(color = Color.White.copy(.45f), blur = 10.dp, inset = true, dy = (-2).dp),
- *             shape = RoundedCornerShape(32.dp)
- *         )
- *         .background(Color(0xFF2A2A2A), RoundedCornerShape(32.dp))
- * )
- *
- *
- *           + also:
- *
- *
- *    Animate any knob (blur, dx, dy, spread, color) with animate*AsState; the modifier keeps up.
- *
- */
+expect fun DrawScope.drawShadow(
+    shadow: Shadow,
+    shape: Shape,
+    size: Size,
+    layoutDirection: LayoutDirection,
+    isInner: Boolean
+)
 
-/** Attach any number of [Shadow]s to this node – zero platform code. */
+// ──  ( 1 ) drawShadow implementation ────────────────────────────────────────────────
 fun Modifier.shadowCustom(
-    vararg shadows: Shadow,
-    shape: Shape = RectangleShape,
-    clipContent: Boolean = false,
-): Modifier = this.then(
-    Modifier.drawWithContent {
-        // 1) OUTER shadows – fake by drawing coloured rects, then blurring them
-        shadows.filter { !it.inset }.forEach { s ->
-            drawIntoCanvas { canvas ->
-                val spreadPx = s.spread.toPx()
-                val rect = Rect(
-                    left = -spreadPx + s.dx.toPx(),
-                    top = -spreadPx + s.dy.toPx(),
-                    right = size.width + spreadPx + s.dx.toPx(),
-                    bottom = size.height + spreadPx + s.dy.toPx()
-                )
-                canvas.save()
-                canvas.clipPath(Path().apply { addOutline(shape.createOutline(size, layoutDirection, this@drawWithContent)) }, ClipOp.Difference)
-                canvas.drawRect(rect, Paint().apply { color = s.color })
-                canvas.restore()
-            }
+    innerShadows: List<Shadow> = emptyList(),
+    outerShadows: List<Shadow> = emptyList(),
+    shape: Shape = RectangleShape // or RoundedCornerShape(12.dp), CircleShape, etc.
+) = this
+    .drawBehind {
+        outerShadows.forEach {
+            drawShadow(it, shape, size, layoutDirection, isInner = false)
         }
-
-        // 2) draw original content
+    }
+    .drawWithContent {
         drawContent()
-
-        // 3) INNER shadows – draw coloured rect *inside*, invert with saveLayer α-inversion, blur
-        shadows.filter { it.inset }.forEach { s ->
-            val spreadPx = s.spread.toPx()
-            val insetRect = Rect(
-                left = spreadPx + s.dx.toPx(),
-                top = spreadPx + s.dy.toPx(),
-                right = size.width - spreadPx + s.dx.toPx(),
-                bottom = size.height - spreadPx + s.dy.toPx()
-            )
-
-            drawIntoCanvas { canvas ->
-                // isolate
-                canvas.saveLayer(bounds = insetRect, paint = Paint())
-                // hole punch
-                canvas.drawRect(insetRect, Paint().apply { color = s.color })
-                // keep only intersection
-                canvas.clipPath(Path().apply { addOutline(shape.createOutline(size, layoutDirection, this@drawWithContent)) })
-                canvas.restore()
-            }
+        innerShadows.forEach {
+            drawShadow(it, shape, size, layoutDirection, isInner = true)
         }
-    }.blur(   // one blur pass per *layer*; keep radii small for perf
-        radius = shadows.maxOfOrNull { it.blur } ?: 0.dp,
-        edgeTreatment = BlurredEdgeTreatment.Unbounded
-    )
-).let { if (clipContent) it.clip(shape) else it }
+    }
 
-// endregion
-
-// region Button with custom shadow
 @Composable
 fun ButtonCustomShadow(
     text: String,
@@ -375,20 +335,6 @@ fun ButtonCustomShadow(
     modifier: Modifier = Modifier,
 ) {
     val shape = RoundedCornerShape(28.dp)
-
-    /* 1 - shadows */
-    val outerGlow = Shadow(
-        color = Color.White.copy(alpha = .55f),
-        blur = 24.dp,         // softness
-        spread = 6.dp,          // reaches further out
-        dy = (-2).dp,       // slight top bias
-    )
-    val innerDrop = Shadow(
-        color = Color.Black.copy(alpha = .45f),
-        blur = 14.dp,
-        inset = true,
-        dy = 2.dp
-    )
 
     /* 2 - body gradient + gloss */
     val bodyGrad = Brush.verticalGradient(
@@ -402,16 +348,36 @@ fun ButtonCustomShadow(
 
     Box(
         modifier
-            .shadowCustom(outerGlow, innerDrop, shape = shape)
+            .shadowCustom(
+                outerShadows = listOf(
+                    Shadow(
+                        color = Color.White.copy(alpha = .25f),
+                        blur = 12.dp,         // softness
+                        spread = 8.dp,        // reaches further out
+                        dx = (-8).dp,
+                        dy = (-8).dp,         // slight top bias
+                    )
+                ),
+                innerShadows = listOf(
+                    Shadow(
+                        color = Color.Black.copy(alpha = .85f),
+                        blur = 12.dp,
+                        inset = true,
+                        dy = 12.dp,
+                        dx = 8.dp,
+                    ),
+                    Shadow(
+                        color = Color.White.copy(alpha = .45f),
+                        blur = 8.dp,
+                        inset = true,
+                        dy = (-6).dp,
+                        dx = (-6).dp,
+                    )
+                ),
+                shape = shape
+            )
             .background(bodyGrad, shape)
             .border(1.dp, Color.White.copy(alpha = .12f), shape) // ← chef’s-kiss bevel  ( o3:  0.08 - 0.18 is the sweet spot )
-            .drawWithContent {
-                drawContent()                   // button fill
-                drawRoundRect(                 // glossy strip
-                    brush = gloss,
-                    cornerRadius = CornerRadius(28.dp.toPx())
-                )
-            }
             .clickable(onClick = onClick)
             .padding(horizontal = 32.dp, vertical = 18.dp),
         contentAlignment = Alignment.Center
@@ -419,4 +385,110 @@ fun ButtonCustomShadow(
         Text(text.uppercase(), color = Color.White, fontSize = 18.sp)
     }
 }
+// endregion
+
+// region Color Cloud
+/**
+ *
+ * ──  ( 2 ) color cloud ─────────────────────────────────────────────
+ *
+ *
+ * Applies a dynamically displaced, softly faded sweep gradient outline ("cloud-like" effect) around the given shape.
+ *
+ * Gradient fades smoothly in and out for each color, creating gentle transitions rather than sharp boundaries.
+ *
+ * @param colors List of colors evenly distributed around the sweep gradient.
+ * @param strokeWidth Thickness of the gradient outline.
+ * @param shape Shape of the outline onto which the gradient is applied.
+ * @param coverageDegrees Angular span (in degrees) of the gradient around the shape (≤360°).
+ * @param displacementDegrees Rotation of the gradient, offsetting its starting point.
+ * @param fadeDegrees Degrees used for smooth fading transitions of each color segment.
+ */
+fun Modifier.colorClouds(
+    colors: List<Color>,
+    strokeWidth: Dp = 32.dp,
+    shape: Shape = RoundedCornerShape(8.dp),
+    coverageDegrees: Float = 310f,
+    displacementDegrees: Float = 105f,
+    fadeDegrees: Float = 32f,
+    globalAlpha: Float,
+): Modifier = padding(strokeWidth * 1.5f)
+    .graphicsLayer {
+        alpha = globalAlpha
+        clip = false
+        compositingStrategy = CompositingStrategy.Offscreen
+    }.drawWithCache {
+        val strokePx = strokeWidth.toPx()
+
+        // ⭐️ MAGIC FIX RIGHT HERE: EXPAND PATH TO ACCOMMODATE THE BLUR ⭐️
+        val blurPadding = strokePx * 0.4f
+        val expandedSize = Size(size.width + blurPadding, size.height + blurPadding)
+        val center = Offset(expandedSize.width / 2f, expandedSize.height / 2f)
+
+//    xx      val center = Offset(size.width / 2f, size.height / 2f)     // REPLACED OLD ONE
+
+        val sweepFraction = coverageDegrees.coerceAtMost(360f) / 360f
+        val fadeFraction = fadeDegrees / 360f
+        val displacementFraction = (displacementDegrees % 360f) / 360f
+
+        val gradientStops = mutableListOf<Pair<Float, Color>>()
+
+        val segmentFraction = sweepFraction / colors.size
+
+        colors.forEachIndexed { i, color ->
+            val startFraction = i * segmentFraction
+            val endFraction = (i + 1) * segmentFraction
+
+            // Smooth fade-in
+            gradientStops += startFraction to color.copy(alpha = 0f)
+            gradientStops += (startFraction + fadeFraction * 0.5f) to color.copy(alpha = 0.08f)  // intermediate step!
+            gradientStops += (startFraction + fadeFraction) to color.copy(alpha = 0.3f)
+
+            // Stable mid-color ( The Knee )
+            gradientStops += ((startFraction + endFraction) / 2) to color.copy(alpha = 0.4f)
+
+            // Smooth fade-out
+            gradientStops += (endFraction - fadeFraction) to color.copy(alpha = 0.3f)
+            gradientStops += (endFraction - fadeFraction * 0.5f) to color.copy(alpha = 0.08f)   // intermediate step!
+            gradientStops += endFraction to color.copy(alpha = 0f)
+        }
+
+        val normalizedStops = gradientStops.flatMap { (fraction, color) ->
+            val displacedFraction = (fraction + displacementFraction) % 1f
+            listOf(
+                displacedFraction to color,
+                displacedFraction + 1f to color
+            )
+        }.sortedBy { it.first }
+
+        // Sweep gradient brush centered within the component
+        val gradientBrush = Brush.sweepGradient(
+            colorStops = normalizedStops.toTypedArray(),
+            center = center
+        )
+
+        val outlinePath = Path().apply {
+            addOutline(shape.createOutline(size, layoutDirection, this@drawWithCache))
+            translate(Offset(blurPadding / 2f, blurPadding / 2f))
+        }
+
+        onDrawBehind {
+            drawCombinedGradientStroke(
+                path = outlinePath,
+                sweepBrush = gradientBrush,
+                strokeWidthPx = strokePx,
+                shapeSize = expandedSize,
+                shape = shape
+            )
+        }
+    }
+
+expect fun DrawScope.drawCombinedGradientStroke(
+    path: Path,
+    sweepBrush: Brush,
+    strokeWidthPx: Float,
+    shapeSize: Size,
+    shape: Shape
+)
+
 // endregion

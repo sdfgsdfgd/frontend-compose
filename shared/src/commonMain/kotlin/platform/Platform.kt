@@ -54,21 +54,29 @@ expect object AppDirs {
     val path: Path
 }
 
-//
-// xx Not expect/actual, this is platform-agnostic, simple-singleton object
-// region Crypto / Helpers.
-// PKCE (Proof Key for Code Exchange) is a security measure to prevent authorization code interception attacks
+// ====================================================================================|
+// ================================[ OAuth PKCE Challenge gen  ]=======================|
+// ====================================================================================|
+data class PKCECode(val value: String, val challenge: String)
+
+@OptIn(ExperimentalEncodingApi::class)
 object PKCE {
-    private const val ALPHA = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~"
+    private const val LENGTH = 64
 
-    data class Verifier(val value: String, val challenge: String)
+    fun new(): PKCECode {
+        val verifier = generateCodeVerifier()
+        val challenge = generateCodeChallenge(verifier)
+        return PKCECode(verifier, challenge)
+    }
 
-    fun new(): Verifier {
-        val verifier = buildString(64) { repeat(64) { append(ALPHA.random()) } }
+    private fun generateCodeVerifier(): String {
+        val charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~"
+        return (1..LENGTH).map { charset.random() }.joinToString("")
+    }
 
-        val challenge = sha256(verifier.encodeToByteArray()).base64Url()
-
-        return Verifier(verifier, challenge)
+    private fun generateCodeChallenge(verifier: String): String {
+        val sha256Bytes = sha256(verifier.encodeToByteArray())
+        return Base64.UrlSafe.encode(sha256Bytes).trimEnd('=')
     }
 }
 
@@ -77,9 +85,6 @@ object PKCE {
 //////////////////////////////////////////////////////////////////
 expect fun sha256(bytes: ByteArray): ByteArray          // ← actuals per target
 
-@OptIn(ExperimentalEncodingApi::class)
-private fun ByteArray.base64Url(): String =
-    Base64.UrlSafe.encode(this)
 // endregion
 
 // region Deep Link Handler

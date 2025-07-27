@@ -1,6 +1,7 @@
 package ui.login
 
 import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,6 +16,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.material.Button
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -28,6 +30,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
@@ -48,6 +51,9 @@ import kotlinx.datetime.format.char
 import kotlinx.datetime.toLocalDateTime
 import platform.BrowserLauncher
 import platform.LocalPlatformContext
+import ui.ButtonCustomShadow
+import ui.ColorCloudDEMO
+import ui.FluidMetaBallContainer
 import ui.GlassCard
 import ui.GlassStyle
 import ui.GlassTopBar
@@ -85,24 +91,79 @@ fun LoginScreen(
         }
     }
 
-    Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+    Box(modifier.fillMaxSize().padding(top = 184.dp), contentAlignment = Alignment.TopCenter) { // Center) {
         when (authState) {
             is AuthState.Unauthenticated ->
-                SkeuoButton(
-                    text = "Login with GitHub",
-                    textColor = Color.White.copy(alpha = 0.4f), // Color(0xFF191192), // .copy(alpha = 0.6f), // Color(0x33FFFFFF), // .copy(alpha = .65f),
-                    modifier = Modifier.padding(12.dp).zIndex(12f),
-                    cornerRadius = 58.dp,
-                    baseTint = Color(0x010101).copy(alpha = 0.4f),
-                    sweepTint = Color(0x313131).copy(alpha = 0.2f),
-                ) {
-                    scope.launch {
-                        busy = true // TODO: add loader & anims for state changes
+                Column {
+                    SkeuoButton(
+                        text = "Login with GitHub",
+                        textColor = Color.White.copy(alpha = 0.4f), // Color(0xFF191192), // .copy(alpha = 0.6f), // Color(0x33FFFFFF), // .copy(alpha = .65f),
+                        modifier = Modifier.padding(12.dp).zIndex(12f),
+                        cornerRadius = 58.dp,
+                        baseTint = Color(0x010101).copy(alpha = 0.4f),
+                        sweepTint = Color(0x313131).copy(alpha = 0.2f),
+                    ) {
+                        scope.launch {
+                            busy = true // TODO: add loader & anims for state changes
 
-                        AuthManager.login { url -> BrowserLauncher.open(url, ctx) }
+                            AuthManager.login { url -> BrowserLauncher.open(url, ctx) }
 
-                        busy = false
+                            busy = false
+                        }
                     }
+
+                    // xx LiquidGlassDemo()    //  <->    [ WIP ]  ( Last milestone uses Call site of Desktop ? ) ( compose last steps not completed yet )
+
+                    //
+                    //
+                    //
+                    //
+                    // xx ========= Dynamic Island Work =============
+                    var split by remember { mutableStateOf(false) }
+
+                    Column(
+                        modifier = Modifier.fillMaxSize(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        FluidMetaBallContainer(
+                            isSplit = split,
+                            blurRadius = 6.dp,
+                            cutoff = 0.8f,
+                            islandSize = DpSize(220.dp, 48.dp),
+                            bubbleSize = DpSize(60.dp, 48.dp),
+                            splitOffset = 40.dp,
+                            islandContent = { Text("🌴", fontSize = 20.sp, color = Color.White) },
+                            bubbleContent = { Text("⏳", fontSize = 20.sp, color = Color.White) }
+                        )
+
+                        Spacer(Modifier.height(40.dp))
+
+                        Button(onClick = { split = !split }) {
+                            Text(if (split) "Merge" else "Split")
+                        }
+                    }
+
+                    // xx ========= Dynamic Island Work =============
+                    //
+                    //
+                    //
+                    //
+                    //
+                    //
+
+                    ButtonCustomShadow(
+                        text = "sdfjgsjsdfsdfdfg",
+                        onClick = {},
+                        modifier = Modifier
+                            .padding(44.dp)
+//                            .zIndex(12f)
+                            .fillMaxWidth()
+                            .height(64.dp)
+                            .background(Color.Transparent) // Color(0x010101).copy(alpha = 0.4f)),
+                    )
+                    ColorCloudDEMO()
+                    // InnerAndOuterShadowDEMO()
                 }
 
             is AuthState.Error -> TODO()
@@ -133,15 +194,17 @@ private fun AuthenticatedPane(
             start.linkTo(parent.start)
             end.linkTo(parent.end)
         }) {
-            GlassTopBar(84.dp, style = GlassStyle().copy(
-                bodyTint = Color.Black,
-                bodyFadeStart = 0.56f, bodyFadeMid = 0.76f,
-                bloomAlpha = 0.55f, bloomRadiusScale = 4.2f,
-                specularAlpha = 0.72f, specularTail = 0.01f,
-                innerRimColor = Color.Yellow, rimGap = 1.2.dp,
-                alpha1 = 0.8f, alpha2 = 0.8f, alpha3 = 0.9f, alpha4 = 0.85f,
-                radius = 32.dp, cornerRadius = 26.dp, rimStroke = 2.8.dp, rimBaseAlpha = 0.04f, rimGlowDelta = 0.06f,
-            )) {
+            GlassTopBar(
+                84.dp, style = GlassStyle().copy(
+                    bodyTint = Color.Black,
+                    bodyFadeStart = 0.56f, bodyFadeMid = 0.76f,
+                    bloomAlpha = 0.55f, bloomRadiusScale = 4.2f,
+                    specularAlpha = 0.72f, specularTail = 0.01f,
+                    innerRimColor = Color.Yellow, rimGap = 1.2.dp,
+                    alpha1 = 0.8f, alpha2 = 0.8f, alpha3 = 0.9f, alpha4 = 0.85f,
+                    radius = 32.dp, cornerRadius = 26.dp, rimStroke = 2.8.dp, rimBaseAlpha = 0.04f, rimGlowDelta = 0.06f,
+                )
+            ) {
                 Column(verticalArrangement = Arrangement.Center) {
                     Spacer(modifier = Modifier.height(32.dp))
 
