@@ -1,26 +1,36 @@
 package ui
 
 import androidx.annotation.FloatRange
+import androidx.compose.animation.core.AnimationVector2D
 import androidx.compose.animation.core.ArcAnimationSpec
-import androidx.compose.animation.core.EaseInOutCubic
 import androidx.compose.animation.core.Easing
 import androidx.compose.animation.core.ExperimentalAnimationSpecApi
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.Transition
+import androidx.compose.animation.core.TwoWayConverter
+import androidx.compose.animation.core.animateDp
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.animateIntAsState
+import androidx.compose.animation.core.animateValue
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.updateTransition
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -34,7 +44,11 @@ import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.CornerBasedShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.Button
+import androidx.compose.material.Icon
 import androidx.compose.material.Text
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Face
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.MutableState
@@ -47,6 +61,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithCache
@@ -736,65 +751,157 @@ data class GlassMaterial(
 //  2. Vertex Particle Splash
 //  3. Ray-marched Shadows
 //
-@Composable
-fun FluidMetaBallContainer(
-    isSplit: Boolean,
-    modifier: Modifier = Modifier,
-    blurRadius: Dp = 4.dp,
-    cutoff: Float = 0.5f,
-    islandSize: DpSize = DpSize(160.dp, 24.dp),
-    bubbleSize: DpSize = DpSize(44.dp, 24.dp),
-    splitOffset: Dp = 30.dp,
-    islandContent: @Composable BoxScope.() -> Unit,
-    bubbleContent: @Composable BoxScope.() -> Unit
+sealed class IslandState(
+    val island: DpSize = DpSize(220.dp, 48.dp),
+    val leading: Dp = 0.dp,
+    val trailing: Dp = 0.dp,
+    val bubble: DpSize = DpSize.Zero,
+    val cutOff: Float = .70f
 ) {
-    val offset by animateDpAsState(
-        if (isSplit) splitOffset else 0.dp,
-        tween(durationMillis = 2400, easing = EaseInOutCubic)
+    val hasBubble: Boolean get() = bubble.width > 0.dp
+
+    data object Default : IslandState(
+        bubble = DpSize(60.dp, 48.dp)
     )
 
+    data object FaceUnlock : IslandState(
+        bubble = DpSize(60.dp, 48.dp),
+        island = DpSize(200.dp, 200.dp),
+        cutOff = .25f
+    )
+
+    data object Split : IslandState(
+        bubble = DpSize(60.dp, 48.dp),
+        cutOff = .8f
+    )
+}
+
+/**
+ * Dynamic Island Composable
+ * • Animated island with bubble
+ * • Blur effect + MetaBall background
+ * • Split state with offset bubble
+ *
+ * Usage:
+ *   - Pass [IslandState] to control the island's state.
+ *   - Provide [islandContent] and [bubbleContent] for custom content.
+ *
+ * Notes:
+ *   - Uses `updateTransition` for smooth animations.
+ *   - Supports blur effects and split states.
+ *
+ *
+ *
+ *   Note from GPT4.5:
+ *     -  use updateTransition combined with custom animateDpSize, providing a clean, scalable, and interruption-safe animation framework.
+ *       ✅ Adaptive velocity: Springs adjust beautifully when interrupted.
+ *       ✅ Fluid & realistic: Natural easing and bounce effects, no more teleports.
+ *       ✅ Concise & idiomatic: Exactly how Compose recommends handling complex animations.
+ *
+ *       You’re now running the absolute gold-standard implementation for animated transitions in Compose. 💎✨
+ */
+// TODO: Bug1:      1..2 px border crop on Island, in split state  ( caused by Shader+Blur stack )
+// TODO: Upgrade:   coroutine based, interruption support for animations
+@Composable
+fun DynamicIsland(
+    state: IslandState,
+    modifier: Modifier = Modifier,
+    blurRadius: Dp = 4.dp,
+    splitOffset: Dp = 40.dp,
+    islandContent: @Composable BoxScope.() -> Unit = {},
+    bubbleContent: @Composable BoxScope.() -> Unit = {}
+) {
+    val transition = updateTransition(state, label = "DynamicIslandTransition")
+    val islandSize by transition.animateDpSize(label = "islandSize") { it.island }
+    val animatedOffset by transition.animateDp(
+        label = "bubbleOffset",
+        transitionSpec = {
+            spring(
+                stiffness = Spring.StiffnessVeryLow,
+                dampingRatio = 0.35f,
+                visibilityThreshold = 0.5.dp
+            )
+        }
+    ) { target ->
+        when (target) {
+            IslandState.Split -> splitOffset
+            IslandState.FaceUnlock -> -IslandState.Split.bubble.width
+            else -> 0.dp
+        }
+    }
+
+    val bubbleAlpha by transition.animateFloat(label = "bubbleAlpha", transitionSpec = {
+        tween(300, delayMillis = 1000)
+    }) { if (it is IslandState.Split) 1f else 0f }
+
+    val bubbleSize by transition.animateDpSize(label = "bubbleSize") { it.bubble }
     val totalWidth = islandSize.width + bubbleSize.width + splitOffset
     val totalHeight = islandSize.height * 2
 
     MetaContainer(
         modifier.size(totalWidth, totalHeight),
-        cutoff = cutoff
+        cutoff = state.cutOff
     ) {
         Box(contentAlignment = Alignment.Center) {
-            // Blurred shapes behind content (no direct content here)
+            // The Island <> Blur + MetaBall background
             Box(
                 Modifier
                     .size(islandSize)
                     .blurEffect(blurRadius)
-                    .background(Color.Black, RoundedCornerShape(islandSize.height / 2))
+                    .background(Color.Black, RoundedCornerShape(50))
             )
 
+            // The Bubble <> Blur + MetaBall background
             Box(
                 Modifier
                     .size(bubbleSize)
-                    .offset(x = islandSize.width / 2 + offset)
+                    .offset(x = islandSize.width / 2 + animatedOffset)
                     .blurEffect(blurRadius)
                     .background(Color.Black, CircleShape)
+                    .alpha(bubbleAlpha)
             )
 
-            // Clear, unblurred content boxes on top
+            // Island's content
             Box(
-                Modifier
-                    .size(islandSize),
+                Modifier.size(islandSize),
                 contentAlignment = Alignment.Center,
                 content = islandContent
             )
 
+            // Bubble's content
             Box(
                 Modifier
                     .size(bubbleSize)
-                    .offset(x = islandSize.width / 2 + offset),
-                contentAlignment = Alignment.Center,
-                content = bubbleContent
-            )
+                    .offset(x = islandSize.width / 2 + animatedOffset)
+                    .alpha(bubbleAlpha),
+                contentAlignment = Alignment.Center
+            ) {
+                bubbleContent()
+            }
         }
     }
 }
+
+@Composable
+fun Transition<IslandState>.animateDpSize(
+    label: String,
+    target: @Composable (IslandState) -> DpSize
+): State<DpSize> = animateValue(
+    TwoWayConverter(
+        { AnimationVector2D(it.width.value, it.height.value) },
+        { DpSize(it.v1.dp, it.v2.dp) }
+    ),
+    label = label,
+    targetValueByState = target,
+    transitionSpec = {
+        spring(
+            stiffness = Spring.StiffnessVeryLow,
+            dampingRatio = 0.45f,
+            visibilityThreshold = DpSize(1.dp, 1.dp)
+        )
+    }
+)
+
 
 @Composable
 expect fun Modifier.blurEffect(radius: Dp): Modifier
@@ -805,6 +912,45 @@ expect fun MetaContainer(
     cutoff: Float = 0.5f,
     content: @Composable BoxScope.() -> Unit
 )
+
+@Composable
+fun Demo() {
+    var state by remember { mutableStateOf<IslandState>(IslandState.Default) }
+
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        DynamicIsland(
+            state = state,
+            blurRadius = 6.dp,
+            splitOffset = 40.dp,
+            islandContent = {
+                when (state) {
+                    IslandState.FaceUnlock -> Icon(Icons.Default.Face, null, tint = Color.White, modifier = Modifier.size(48.dp))
+                    IslandState.Split -> Text("🌴", fontSize = 20.sp, color = Color.White)
+                    else -> {}
+                }
+            },
+            bubbleContent = {
+                if (state is IslandState.Split)
+                    Text("⏳", fontSize = 20.sp, color = Color.White)
+            }
+        )
+
+        Spacer(Modifier.height(40.dp))
+
+        Row {
+            Button(onClick = { state = IslandState.Default }) { Text("Default") }
+            Spacer(Modifier.width(8.dp))
+            Button(onClick = { state = IslandState.Split }) { Text("Split") }
+            Spacer(Modifier.width(8.dp))
+            Button(onClick = { state = IslandState.FaceUnlock }) { Text("Face") }
+        }
+    }
+}
+
 // endregion
 
 // region ───[ Color Cloud Demo    |    Inner+Outer Shadow Demo ]────────────────────────────────────────────────────────────

@@ -11,7 +11,9 @@ import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.CacheDrawScope
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.geometry.toRect
 import androidx.compose.ui.graphics.BlurEffect
@@ -70,44 +72,33 @@ actual fun MetaContainer(
     cutoff: Float,
     content: @Composable BoxScope.() -> Unit
 ) {
-    // language=AGSL
     val shaderSource = """
         uniform shader composable;
         uniform float cutoff;
-    
         half4 main(float2 fragCoord) {
             half4 color = composable.eval(fragCoord);
-        
-            float feather = 0.05; // adjust this value for desired smoothness (smaller = sharper edge)
+            float feather = 0.15;
             color.a = smoothstep(cutoff - feather, cutoff + feather, color.a);
-        
             return color;
         }
-""".trimIndent()
+    """.trimIndent()
 
     val runtimeShader = remember { RuntimeEffect.makeForShader(shaderSource) }
-    val builder = remember(runtimeShader, cutoff) {
-        RuntimeShaderBuilder(runtimeShader).apply {
-            uniform("cutoff", cutoff)
-        }
-    }
-
-    val imgFilter = remember(builder) {
-        ImageFilter.makeRuntimeShader(
-            runtimeShaderBuilder = builder,
-            shaderName = "composable",
-            input = null
-        )
-    }
 
     Box(
-        modifier = modifier.graphicsLayer {
-            renderEffect = imgFilter.asComposeRenderEffect()
+        modifier.graphicsLayer {
+            compositingStrategy = CompositingStrategy.Offscreen
+            renderEffect = ImageFilter.makeRuntimeShader(
+                runtimeShaderBuilder = RuntimeShaderBuilder(runtimeShader).apply {
+                    uniform("cutoff", cutoff)
+                },
+                shaderName = "composable",
+                input = null
+            ).asComposeRenderEffect()
         },
         content = content
     )
 }
-
 
 @Composable
 actual fun Modifier.blurEffect(radius: Dp): Modifier {

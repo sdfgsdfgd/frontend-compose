@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.material.Button
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -30,7 +29,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
@@ -53,7 +51,7 @@ import platform.BrowserLauncher
 import platform.LocalPlatformContext
 import ui.ButtonCustomShadow
 import ui.ColorCloudDEMO
-import ui.FluidMetaBallContainer
+import ui.Demo
 import ui.GlassCard
 import ui.GlassStyle
 import ui.GlassTopBar
@@ -119,30 +117,35 @@ fun LoginScreen(
                     //
                     //
                     // xx ========= Dynamic Island Work =============
-                    var split by remember { mutableStateOf(false) }
 
-                    Column(
-                        modifier = Modifier.fillMaxSize(),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        FluidMetaBallContainer(
-                            isSplit = split,
-                            blurRadius = 6.dp,
-                            cutoff = 0.8f,
-                            islandSize = DpSize(220.dp, 48.dp),
-                            bubbleSize = DpSize(60.dp, 48.dp),
-                            splitOffset = 40.dp,
-                            islandContent = { Text("🌴", fontSize = 20.sp, color = Color.White) },
-                            bubbleContent = { Text("⏳", fontSize = 20.sp, color = Color.White) }
-                        )
+                    // STATE
+//                    var split by remember { mutableStateOf(false) }
+//
+//                    Column(
+//                        modifier = Modifier.fillMaxSize(),
+//                        horizontalAlignment = Alignment.CenterHorizontally,
+//                        verticalArrangement = Arrangement.Center
+//                    ) {
+//                        DynamicIsland(
+//                            isSplit = split,
+//                            blurRadius = 6.dp,
+//                            cutoff = 0.8f,
+//                            islandSize = DpSize(220.dp, 48.dp),
+//                            bubbleSize = DpSize(60.dp, 48.dp),
+//                            splitOffset = 40.dp,
+//                            islandContent = { Text("🌴", fontSize = 20.sp, color = Color.White) },
+//                            bubbleContent = { Text("⏳", fontSize = 20.sp, color = Color.White) }
+//                        )
+//
+//                        Spacer(Modifier.height(40.dp))
+//
+//                        Button(onClick = { split = !split }) {
+//                            Text(if (split) "Merge" else "Split")
+//                        }
+//                    }
 
-                        Spacer(Modifier.height(40.dp))
-
-                        Button(onClick = { split = !split }) {
-                            Text(if (split) "Merge" else "Split")
-                        }
-                    }
+                    Demo()
+//                    Demo2()
 
                     // xx ========= Dynamic Island Work =============
                     //
