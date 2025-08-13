@@ -1,6 +1,7 @@
 package ui
 
 import androidx.annotation.FloatRange
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationVector2D
 import androidx.compose.animation.core.ArcAnimationSpec
 import androidx.compose.animation.core.Easing
@@ -17,10 +18,12 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.animateIntAsState
 import androidx.compose.animation.core.animateValue
 import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.keyframes
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.updateTransition
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -44,6 +47,7 @@ import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.CornerBasedShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.Button
 import androidx.compose.material.Icon
 import androidx.compose.material.Text
@@ -51,6 +55,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Face
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.State
@@ -58,6 +63,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -66,6 +72,7 @@ import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
@@ -74,6 +81,7 @@ import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.TileMode
@@ -86,15 +94,21 @@ import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.launch
 import kotlin.jvm.JvmInline
+import kotlin.math.max
+import kotlin.math.min
 
 // region ───[ Helpers ]────────────────────────────────────────────────────────────
 const val GoldUnicode = "\u001B[38;5;214m"
@@ -270,7 +284,7 @@ fun SkeuoButton(
                 shadowElevation = 6.dp.toPx()
                 clip = false
             }
-            .shadowCustom(
+            .customShadow(
                 outerShadows = listOf(topShadow, bottomShadow),
                 shape = shape
             )
@@ -740,6 +754,419 @@ data class GlassMaterial(
 }
 // endregion
 
+// region ────[ Caret Mod ]────────────────────────────────────────────────────────────
+
+expect object TimeMark {
+    fun nanoTime(): Long
+}
+
+// ———————————————————————————————————————————————
+// DynamicIsland + LuxuryInput integration
+// ———————————————————————————————————————————————
+// ———————————————————————————————————————————————
+// 5) One-call demo you can drop anywhere
+//    Uses your existing DynamicIsland + IslandState
+// ———————————————————————————————————————————————
+@Composable
+fun LuxuryIslandQuickDemo() {
+    var text by remember { mutableStateOf(TextFieldValue("")) }
+    var islandState by remember { mutableStateOf<IslandState>(IslandState.Split) }
+
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        DynamicIslandWithLuxuryInput(
+            state = islandState,
+            value = text,
+            onValueChange = { text = it },
+            onSend = { text = TextFieldValue("") }
+        )
+        Spacer(Modifier.height(16.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Box(
+                Modifier
+                    .background(Color(0x22FFFFFF), RoundedCornerShape(8.dp))
+                    .clickable { islandState = IslandState.Default }
+                    .padding(horizontal = 10.dp, vertical = 6.dp)
+            ) { Text("Compact", color = Color.White) }
+            Box(
+                Modifier
+                    .background(Color(0x22FFFFFF), RoundedCornerShape(8.dp))
+                    .clickable { islandState = IslandState.Split }
+                    .padding(horizontal = 10.dp, vertical = 6.dp)
+            ) { Text("Split", color = Color.White) }
+            Box(
+                Modifier
+                    .background(Color(0x22FFFFFF), RoundedCornerShape(8.dp))
+                    .clickable { islandState = IslandState.FaceUnlock }
+                    .padding(horizontal = 10.dp, vertical = 6.dp)
+            ) { Text("FaceUnlock", color = Color.White) }
+        }
+    }
+}
+
+@Composable
+fun DynamicIslandWithLuxuryInput(
+    state: IslandState,
+    value: TextFieldValue,
+    onValueChange: (TextFieldValue) -> Unit,
+    modifier: Modifier = Modifier,
+    placeholder: String = "Type something elegant…",
+    blurRadius: Dp = 4.dp,
+    splitOffset: Dp = 40.dp,
+    onSend: (() -> Unit)? = null
+) {
+    DynamicIsland(
+        state = state,
+        modifier = modifier,
+        blurRadius = blurRadius,
+        splitOffset = splitOffset,
+        islandContent = {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                contentAlignment = Alignment.CenterStart
+            ) {
+                LuxuryInput(
+                    value = value,
+                    onValueChange = onValueChange,
+                    placeholder = placeholder,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        bubbleContent = {
+            if (onSend != null) {
+                Box(
+                    Modifier
+                        .size(36.dp)
+                        .background(Color(0x22FFFFFF), CircleShape)
+                        .clickable { onSend() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    SendGlyph(tint = Color.White, glyphSize = 16.dp)
+                }
+            }
+        }
+    )
+}
+
+@Composable
+private fun SendGlyph(tint: Color, glyphSize: Dp) {
+    Canvas(Modifier.size(glyphSize)) {
+        val s = this.size                 // Size in px from DrawScope
+        val d = min(s.width, s.height)
+
+        val p = Path().apply {
+            moveTo(0.05f * d, 0.85f * d)
+            lineTo(0.95f * d, 0.50f * d)
+            lineTo(0.05f * d, 0.15f * d)
+            close()
+        }
+        drawPath(p, tint)
+    }
+}
+
+
+// ———————————————————————————————————————————————
+// 1) Caret spec mirrors your CSS
+// ———————————————————————————————————————————————
+data class CaretSpec(
+    val color: Color = Color(0xAFB8FA10),   // #b8fa10af
+    val glowSoft: Color = Color(0x808A6534),
+    val glowStrong: Color = Color(0xB80C0C05),
+    val glowHighlight: Color = Color(0x4DF5B504),
+    val widthDp: Float = 2f,
+    val blinkMillis: Int = 1200
+)
+
+
+/**
+ * Ultimate LuxuryInput
+ * - Cursor hidden, custom caret drawn ON the text layer via drawWithContent.
+ * - Blink 1.2s (1 -> 0.5 -> 1), warm triple-glow breathing.
+ * - Compose 1.8+ safe, no size.minDimension nonsense.
+ */
+@Composable
+fun LuxuryInput(
+    value: TextFieldValue,
+    onValueChange: (TextFieldValue) -> Unit,
+    modifier: Modifier = Modifier,
+    caretSpec: CaretSpec = CaretSpec(),
+    placeholder: String = "Type…",
+    textStyle: TextStyle = TextStyle(
+        color = Color(0xCC8A6534),
+        fontFamily = FontFamily.Monospace,
+        fontSize = 16.sp,
+        textAlign = TextAlign.Start
+    ),
+    singleLine: Boolean = true,
+) {
+    var focused by remember { mutableStateOf(false) }
+    var layout by remember { mutableStateOf<TextLayoutResult?>(null) }
+
+    // 1) Smooth focus fade (separate specs for in/out)
+    val focusFade by updateTransition(targetState = focused, label = "focus")
+        .animateFloat(
+            transitionSpec = {
+                if (targetState) {
+                    // focus gained: slow + bouncy
+//                    spring(stiffness = 10f, dampingRatio = 0.03f)
+                    tween(durationMillis = 222, easing = FastOutSlowInEasing)
+                } else {
+                    // focus lost: glide out
+                    tween(durationMillis = 666, easing = FastOutSlowInEasing)
+                }
+            },
+            label = "focusFade"
+        ) { isFocused -> if (isFocused) 1f else 0f }
+
+    // 2) Only run the oscillators when we’re at least slightly visible
+    val runOsc = focusFade > 0.01f
+
+    // Blink: 1 → 0.5 → 1, but only when visible
+    val blinkAlpha by (
+            if (runOsc) {
+                val t = rememberInfiniteTransition(label = "blink")
+                t.animateFloat(
+                    initialValue = 1f,
+                    targetValue = 1f,
+                    animationSpec = infiniteRepeatable(
+                        animation = keyframes {
+                            durationMillis = caretSpec.blinkMillis
+                            1f at 0
+                            0.5f at caretSpec.blinkMillis / 2
+                            1f at caretSpec.blinkMillis
+                        }
+                    ),
+                    label = "blinkAlpha"
+                )
+        } else rememberUpdatedState(1f)
+    )
+
+    // Glow: breathe only when visible
+    val glowProgress by (
+            if (runOsc) {
+                val t = rememberInfiniteTransition(label = "glow")
+                t.animateFloat(
+                    initialValue = 0f,
+                    targetValue = 1f,
+                    animationSpec = infiniteRepeatable(
+                        animation = tween(900, easing = FastOutSlowInEasing),
+                        repeatMode = RepeatMode.Reverse
+                    ),
+                    label = "glowProgress"
+                )
+        } else rememberUpdatedState(0f)
+    )
+
+    // ---------- SPEED‑TUNED CARET MOTION ----------
+    val density = LocalDensity.current
+    val caretWidthPx = with(density) { caretSpec.widthDp.dp.toPx() }
+    val minCaretHeightPx = with(density) { 18.dp.toPx() }
+
+    // Animated caret channels
+    val caretX = remember { Animatable(0f) }
+    val caretY = remember { Animatable(0f) }
+    val caretH = remember { Animatable(minCaretHeightPx) }
+
+    // Target rect derived from layout + selection
+    val targetRect: Rect? by remember(value.selection, layout, value.text) {
+        mutableStateOf(
+            layout?.let {
+                val i = value.selection.start.coerceIn(0, it.layoutInput.text.text.length)
+                runCatching { it.getCursorRect(i) }.getOrNull()
+            }
+        )
+    }
+
+    // Track last move time to estimate "typing speed"
+    var lastMoveNanos by remember { mutableStateOf(TimeMark.nanoTime()) }
+
+    // Animate to each new target
+    LaunchedEffect(targetRect, focusFade) {
+        val r = targetRect ?: return@LaunchedEffect
+
+        // snap branch
+        if (focusFade <= 0.01f) {
+            // not visible: snap to target, don't animate
+            caretX.snapTo(r.left)
+            caretY.snapTo(r.top)
+            caretH.snapTo(max(r.height, minCaretHeightPx))
+            lastMoveNanos = TimeMark.nanoTime()
+            return@LaunchedEffect
+        }
+
+        // timing
+        val now = TimeMark.nanoTime()
+        val dtMs = ((now - lastMoveNanos) / 1_000_000L).coerceAtLeast(1L)
+
+        val dx = r.left - caretX.value
+        val dy = r.top - caretY.value
+        val dist = kotlin.math.sqrt(dx * dx + dy * dy) // px
+        val pxPerMs = dist / dtMs.toFloat()            // "typing speed"
+
+        // Map speed → spring parameters.
+        // Slow moves = softer + more damping; fast moves = stiffer + a touch bouncy.
+        fun lerp(a: Float, b: Float, t: Float) = a + (b - a) * t
+        val t = (pxPerMs / 2.5f).coerceIn(0f, 1f) // 0..~2.5 px/ms
+        val stiffness = lerp(220f, 1600f, t)
+        val damping   = lerp(0.90f, 0.70f, t)
+
+        val spec = spring(stiffness = stiffness, dampingRatio = damping, visibilityThreshold = 0.5f)
+
+        // Height lags a hair less than X/Y so the bar doesn't "squash" too long
+        val hSpec = spring(stiffness = stiffness * 0.9f, dampingRatio = damping, visibilityThreshold = 0.5f)
+
+        launch { caretX.animateTo(r.left, animationSpec = spec) }
+        launch { caretY.animateTo(r.top, animationSpec = spec) }
+        launch { caretH.animateTo(max(r.height, minCaretHeightPx), animationSpec = hSpec) }
+
+        lastMoveNanos = now
+    }
+    // ---------- END SPEED‑TUNED CARET MOTION ----------
+
+    Box(
+        modifier
+            .background(Color(0x33000000), RoundedCornerShape(10.dp))
+            .padding(horizontal = 12.dp, vertical = 4.dp),
+        contentAlignment = Alignment.CenterStart
+    ) {
+        BasicTextField(
+            value = value,
+            onValueChange = {
+                println("Text changed: ${it.text}")
+
+                onValueChange(it)
+            },
+            singleLine = singleLine,
+            textStyle = textStyle,
+            cursorBrush = SolidColor(Color.Transparent), // hide native caret
+            onTextLayout = {
+                println("TextLayout updated: ${layout?.layoutInput?.text?.text}")
+
+                layout = it },
+            modifier = Modifier
+                .fillMaxWidth()
+                .onFocusChanged { focused = it.isFocused }
+                .drawWithContent {
+                    // 1) paint text + selection first
+                    drawContent()
+
+                    // 2) custom caret
+                    val tl = layout ?: return@drawWithContent
+                    if (focusFade <= 0.01f) return@drawWithContent
+
+                    val left = caretX.value
+                    val top  = caretY.value
+                    val h    = caretH.value
+                    val center = Offset(left + caretWidthPx / 2f, top + h / 2f)
+
+                    // Base caret
+                    val leftSnapped = kotlin.math.round(left)
+                    val widthSnapped = kotlin.math.max(1f, kotlin.math.round(caretWidthPx))
+
+                    drawRect(
+                        color = caretSpec.color.copy(alpha = (blinkAlpha * focusFade).coerceIn(0f, 1f)),
+                        topLeft = Offset(leftSnapped, top),
+                        size = Size(widthSnapped, h),
+                        // lets glyphs under the bar brighten instead of getting dimmed
+                        blendMode = BlendMode.Screen
+                    )
+
+                    // ---------- Capsule Glow with two knees (shader-free) ----------
+                    fun lerp(a: Float, b: Float, t: Float) = a + (b - a) * t
+                    val e = FastOutSlowInEasing.transform(glowProgress.coerceIn(0f, 1f))
+
+// knee thresholds (same idea as before, eased)
+                    val knee1 = lerp(0.18f, 0.30f, e)
+                    val knee2 = lerp(0.60f, 0.95f, e)
+
+// vertical softness factor so the pill breathes taller than wide
+                    val vScale = 1.15f
+
+                    fun drawGlowCapsule(
+                        basePad: Float,       // dp→px before call
+                        growPad: Float,       // dp→px before call
+                        color: Color,
+                        aCore: Float,         // alpha at center
+                        aMid: Float           // alpha at knee1
+                    ) {
+                        val pad = (basePad + growPad * e) * focusFade
+
+                        val leftPx = left - pad
+                        val topPx  = top  - pad * vScale
+                        val w1 = caretWidthPx + pad * 2f
+                        val h1 = h + pad * 2f * vScale
+
+                        // pill radius
+                        val r = min(w1, h1) / 2f
+
+                        // make the gradient fade to 0 *before* the rounded-rect edge → no box clipping
+                        val halfDiag = 0.5f * kotlin.math.sqrt(w1 * w1 + h1 * h1)
+                        val gradR = halfDiag * 0.90f
+
+                        val a0 = aCore * blinkAlpha * focusFade
+                        val a1 = aMid  * blinkAlpha * focusFade
+
+                        drawRoundRect(
+                            brush = Brush.radialGradient(
+                                colorStops = arrayOf(
+                                    0f     to color.copy(alpha = a0),
+                                    knee1  to color.copy(alpha = a1),
+                                    knee2  to Color.Transparent
+                                ),
+                                center = Offset(left + caretWidthPx / 2f, top + h / 2f),
+                                radius = gradR
+                            ),
+                            topLeft = Offset(leftPx, topPx),
+                            size = Size(w1, h1),
+                            cornerRadius = CornerRadius(r, r),
+                            blendMode = BlendMode.Plus
+                        )
+                    }
+
+// Soft / Strong / Highlight (same timing feel, pill-shaped)
+                    drawGlowCapsule(
+                        basePad = 2.dp.toPx(), growPad = 3.dp.toPx(),
+                        color = caretSpec.glowSoft,
+                        aCore = 0.33f, aMid = 0.18f
+                    )
+                    drawGlowCapsule(
+                        basePad = 6.dp.toPx(), growPad = 5.dp.toPx(),
+                        color = caretSpec.glowStrong,
+                        aCore = 0.28f, aMid = 0.12f
+                    )
+                    drawGlowCapsule(
+                        basePad = 10.dp.toPx(), growPad = 10.dp.toPx(),
+                        color = caretSpec.glowHighlight,
+                        aCore = 0.22f, aMid = 0.10f
+                    )
+// ---------- end Capsule Glow ----------
+                },
+            // Placeholder
+            decorationBox = { inner ->
+                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterStart) {
+                    if (value.text.isEmpty()) {
+                        Text(
+                            placeholder,
+                            color = Color(0x99B4B4B4),
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 16.sp
+                        )
+                    }
+                    inner()
+                }
+            }
+        )
+    }
+}
+// endregion
+
 //  region ────[ Dynamic Island ]────────────────────────────────────────────────────────────
 // xx  Ultimate Shaders / Engine for Fluid
 //  Matsuoka's Fluid Render Engine
@@ -1050,7 +1477,7 @@ fun InnerAndOuterShadowDEMO() {
     Box(
         Modifier
             .size(480.dp)
-            .shadowCustom(
+            .customShadow(
                 outerShadows = listOf(
                     Shadow(
                         color = Color.Cyan.copy(alpha = 0.5f),

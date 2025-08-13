@@ -24,7 +24,7 @@ actual fun DrawScope.drawCombinedGradientStroke(
 ) {
 }
 
-actual fun DrawScope.drawShadow(
+actual fun DrawScope.customShadow(
     shadow: Shadow,
     shape: Shape,
     size: Size,
@@ -55,3 +55,7 @@ actual object DesktopCaptureBridge {
 // endregion
 // ──────────────────────────────────────────────────────────────────────
 //
+
+actual object TimeMark {
+    actual fun nanoTime() = System.nanoTime()
+}

@@ -302,7 +302,7 @@ data class Shadow(
     val inset: Boolean = false    // false = outer, true = inner
 )
 
-expect fun DrawScope.drawShadow(
+expect fun DrawScope.customShadow(
     shadow: Shadow,
     shape: Shape,
     size: Size,
@@ -310,21 +310,22 @@ expect fun DrawScope.drawShadow(
     isInner: Boolean
 )
 
+// xx Before Deprecate&Delete keep the custom version here in case maybe there is need for a custom knobs ....
 // ──  ( 1 ) drawShadow implementation ────────────────────────────────────────────────
-fun Modifier.shadowCustom(
+fun Modifier.customShadow(
     innerShadows: List<Shadow> = emptyList(),
     outerShadows: List<Shadow> = emptyList(),
     shape: Shape = RectangleShape // or RoundedCornerShape(12.dp), CircleShape, etc.
 ) = this
     .drawBehind {
         outerShadows.forEach {
-            drawShadow(it, shape, size, layoutDirection, isInner = false)
+            customShadow(it, shape, size, layoutDirection, isInner = false)
         }
     }
     .drawWithContent {
         drawContent()
         innerShadows.forEach {
-            drawShadow(it, shape, size, layoutDirection, isInner = true)
+            customShadow(it, shape, size, layoutDirection, isInner = true)
         }
     }
 
@@ -348,7 +349,7 @@ fun ButtonCustomShadow(
 
     Box(
         modifier
-            .shadowCustom(
+            .customShadow(
                 outerShadows = listOf(
                     Shadow(
                         color = Color.White.copy(alpha = .25f),

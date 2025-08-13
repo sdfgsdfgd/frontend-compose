@@ -11,9 +11,7 @@ import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.CacheDrawScope
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.geometry.toRect
 import androidx.compose.ui.graphics.BlurEffect
@@ -120,7 +118,7 @@ actual fun Modifier.blurEffect(radius: Dp): Modifier {
 //      Outer https://medium.com/@kappdev/custom-drop-shadow-from-figma-in-jetpack-compose-for-any-shape-d20fccac4e20
 //
 // Note: Fcking replaced by Compose 1.9.0  .__.
-actual fun DrawScope.drawShadow(
+actual fun DrawScope.customShadow(
     shadow: Shadow,
     shape: Shape,
     size: Size,
@@ -177,7 +175,7 @@ actual fun DrawScope.drawShadow(
             skiaPaint.blendMode = org.jetbrains.skia.BlendMode.CLEAR
 
             translate(-shadow.dx.toPx(), -shadow.dy.toPx())
-            when (val originalOutline = shape.createOutline(size, layoutDirection, this@drawShadow)) {
+            when (val originalOutline = shape.createOutline(size, layoutDirection, this@customShadow)) {
                 is Outline.Rectangle -> drawRect(originalOutline.rect.toSkiaRect(), skiaPaint)
                 is Outline.Rounded -> drawRRect(originalOutline.roundRect.toSkiaRRect(), skiaPaint)
                 is Outline.Generic -> drawPath(originalOutline.path.asSkiaPath(), skiaPaint)
@@ -798,4 +796,10 @@ private fun findSkiaLayer(
 }
 
 
+// endregion
+
+// region ────[  Caret Mod  ]───────────────────────────────────────────────────────────────
+actual object TimeMark {
+    actual fun nanoTime() = System.nanoTime()
+}
 // endregion

@@ -115,13 +115,13 @@ android {
     experimentalProperties["android.experimental.kmp.enableAndroidResources"] = true
 }
 
-gradle.projectsEvaluated {
-    tasks.findByName("desktopRunHot")?.let {
-        (it as ComposeHotRun).mainClass.set("net.sdfgsdfg.MainKt")
-    }
-}
+//gradle.projectsEvaluated {
+//    tasks.findByName("desktopRunHot")?.let {
+//        (it as org.jetbrains.compose.reload.gradle.ComposeHotRun).mainClass.set("net.sdfgsdfg.MainKt")
+//    }
+//}
 
-tasks.withType<ComposeHotRun>().configureEach {
+tasks.withType<org.jetbrains.compose.reload.gradle.ComposeHotRun>().configureEach {
     mainClass.set("net.sdfgsdfg.MainKt") // hotreload still requires this (or CLI arg as -PmainClass=net.sdfgsdfg.MainKt )
     args("--auto") // todo: duplicate with other one below, remove one
 
@@ -130,7 +130,7 @@ tasks.withType<ComposeHotRun>().configureEach {
 //    dependsOn(":macosCaptureNative:linkDebug")
 //    dependsOn(":macosCaptureNative:linkDebugSharedArm64")
 //    dependsOn(":macosCaptureNative:linkReleaseSharedArm64")
-    jvmArgs("-Djava.library.path=${nativeLibDir.get().asFile.absolutePath}")
+//    jvmArgs("-Djava.library.path=${nativeLibDir.get().asFile.absolutePath}")
 }
 
 /* -------------------------------------------------------- */

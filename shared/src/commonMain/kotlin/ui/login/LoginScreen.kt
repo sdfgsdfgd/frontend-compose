@@ -1,7 +1,6 @@
 package ui.login
 
 import androidx.compose.animation.animateContentSize
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -49,13 +48,13 @@ import kotlinx.datetime.format.char
 import kotlinx.datetime.toLocalDateTime
 import platform.BrowserLauncher
 import platform.LocalPlatformContext
-import ui.ButtonCustomShadow
 import ui.ColorCloudDEMO
 import ui.Demo
 import ui.GlassCard
 import ui.GlassStyle
 import ui.GlassTopBar
 import ui.GoldUnicode
+import ui.LuxuryIslandQuickDemo
 import ui.SkeuoButton
 import ui.SkeuoText
 import ui.login.model.AuthState
@@ -145,6 +144,7 @@ fun LoginScreen(
 //                    }
 
                     Demo()
+//                    LuxuryIslandQuickDemo()
 //                    Demo2()
 
                     // xx ========= Dynamic Island Work =============
@@ -155,16 +155,16 @@ fun LoginScreen(
                     //
                     //
 
-                    ButtonCustomShadow(
-                        text = "sdfjgsjsdfsdfdfg",
-                        onClick = {},
-                        modifier = Modifier
-                            .padding(44.dp)
-//                            .zIndex(12f)
-                            .fillMaxWidth()
-                            .height(64.dp)
-                            .background(Color.Transparent) // Color(0x010101).copy(alpha = 0.4f)),
-                    )
+//                    ButtonCustomShadow(
+//                        text = "sdfjgsjsdfsdfdfg",
+//                        onClick = {},
+//                        modifier = Modifier
+//                            .padding(44.dp)
+////                            .zIndex(12f)
+//                            .fillMaxWidth()
+//                            .height(64.dp)
+//                            .background(Color.Transparent) // Color(0x010101).copy(alpha = 0.4f)),
+//                    )
                     ColorCloudDEMO()
                     // InnerAndOuterShadowDEMO()
                 }

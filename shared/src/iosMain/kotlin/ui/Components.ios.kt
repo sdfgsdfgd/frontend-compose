@@ -25,7 +25,7 @@ actual fun DrawScope.drawCombinedGradientStroke(
 ) {
 }
 
-actual fun DrawScope.drawShadow(
+actual fun DrawScope.customShadow(
     shadow: Shadow,
     shape: Shape,
     size: Size,
@@ -52,4 +52,10 @@ actual object DesktopCaptureBridge {
     actual external fun startCapture(callback: FrameCallback)
     actual external fun createSkiaImageFromIOSurface(surfacePtr: Long, contextPtr: Long): Long
     actual external fun createImageBitmapFromSkiaImage(skImagePtr: Long): ImageBitmap
+}
+
+actual object TimeMark {
+    actual fun nanoTime(): Long {
+        TODO("Not yet implemented")
+    }
 }

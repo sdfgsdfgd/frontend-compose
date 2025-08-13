@@ -7,7 +7,7 @@
 [versions]
 activityCompose                         = "1.10.1"
 browser                                 = "1.8.0"
-compose                                 = "1.8.0"         # xx compatible material3 is going to be 1.3.2 as per https://www.jetbrains.com/help/kotlin-multiplatform-dev/compose-compatibility-and-versioning.html#jetpack-compose-and-compose-multiplatform-release-cycles
+compose                                 = "1.9.0-beta01"         # xx compatible material3 is going to be 1.3.2 as per https://www.jetbrains.com/help/kotlin-multiplatform-dev/compose-compatibility-and-versioning.html#jetpack-compose-and-compose-multiplatform-release-cycles
 constraintlayoutComposeMultiplatform    = "0.5.1"
 coroutines                              = "1.10.2"
 composeBom                              = "2025.06.01"
@@ -27,7 +27,7 @@ media3Ui                                = "1.7.1"
 ktor                                    = "3.1.2"
 okio                                    = "3.10.2"
 
-composeHotReload                        = "1.0.0-alpha11"
+composeHotReload                        = "1.0.0-beta04"
 #uiToolingPreviewDesktop                 = "+"
 #constraintlayout                        = "+"
 #ktorClientDarwin                        = "2.3.8"
