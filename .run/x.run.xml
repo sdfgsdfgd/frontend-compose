@@ -10,7 +10,7 @@
       </option>
       <option name="taskNames">
         <list>
-          <option value=":shared:desktopRunHotAsync" />
+          <option value=":shared:hotRunDesktopAsync" />
           <option value="--auto" />
         </list>
       </option>
