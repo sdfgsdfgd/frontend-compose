@@ -104,6 +104,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.max
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 import kotlin.jvm.JvmInline
@@ -1228,6 +1229,8 @@ sealed class IslandState(
  *       You’re now running the absolute gold-standard implementation for animated transitions in Compose. 💎✨
  */
 // TODO: Bug1:      1..2 px border crop on Island, in split state  ( caused by Shader+Blur stack )
+// TODO: Bug2:   (related to bug1?) UPGRADE TO 1.9.0-beta01 causes bubble to disappear at last millis
+//                    https://chatgpt.com/g/g-3X6EMarap-x5/c/689c8825-a03c-832b-8031-50ebcb6262b4
 // TODO: Upgrade:   coroutine based, interruption support for animations
 @Composable
 fun DynamicIsland(
