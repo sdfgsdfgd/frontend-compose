@@ -25,7 +25,7 @@ actual fun DrawScope.drawCombinedGradientStroke(
 }
 
 actual fun DrawScope.customShadow(
-    shadow: Shadow,
+    customShadow: CustomShadow,
     shape: Shape,
     size: Size,
     layoutDirection: LayoutDirection,

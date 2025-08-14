@@ -85,6 +85,7 @@ actual fun MetaContainer(
 
     Box(
         modifier.graphicsLayer {
+            // Parent stays offscreen (as before) AND pinned to block settle-time flatten.
             compositingStrategy = CompositingStrategy.Offscreen
             renderEffect = ImageFilter.makeRuntimeShader(
                 runtimeShaderBuilder = RuntimeShaderBuilder(runtimeShader).apply {
@@ -107,7 +108,6 @@ actual fun Modifier.blurEffect(radius: Dp): Modifier {
         renderEffect = BlurEffect(pxRadius, pxRadius, edgeTreatment = TileMode.Decal)
     )
 }
-
 // endregion
 
 // region ────[  Shadow  -  ( Inner & Outer )   ]───────────────────────────────────────────────────────────────
@@ -119,26 +119,26 @@ actual fun Modifier.blurEffect(radius: Dp): Modifier {
 //
 // Note: Fcking replaced by Compose 1.9.0  .__.
 actual fun DrawScope.customShadow(
-    shadow: Shadow,
+    customShadow: CustomShadow,
     shape: Shape,
     size: Size,
     layoutDirection: LayoutDirection,
     isInner: Boolean
 ) {
-    val shadowSize = Size(size.width + shadow.spread.toPx(), size.height + shadow.spread.toPx())
+    val shadowSize = Size(size.width + customShadow.spread.toPx(), size.height + customShadow.spread.toPx())
     val outline = shape.createOutline(shadowSize, layoutDirection, this)
 
     val skiaPaint = org.jetbrains.skia.Paint().apply {
-        color = shadow.color.toArgb()
+        color = customShadow.color.toArgb()
         isAntiAlias = true
-        maskFilter = MaskFilter.makeBlur(FilterBlurMode.NORMAL, shadow.blur.toPx())
+        maskFilter = MaskFilter.makeBlur(FilterBlurMode.NORMAL, customShadow.blur.toPx())
     }
 
     drawContext.canvas.nativeCanvas.apply {
         if (isInner) {
             // Inner Shadow with compositing (subtract shadow from content)
             val layerPaint = org.jetbrains.skia.Paint()
-            saveLayer(size.toRect().inflate(shadow.blur.toPx() * 4f).toSkiaRect(), layerPaint)
+            saveLayer(size.toRect().inflate(customShadow.blur.toPx() * 4f).toSkiaRect(), layerPaint)
 
             when (outline) {
                 is Outline.Rectangle -> drawRect(outline.rect.toSkiaRect(), skiaPaint)
@@ -148,7 +148,7 @@ actual fun DrawScope.customShadow(
 
             skiaPaint.blendMode = org.jetbrains.skia.BlendMode.CLEAR
 
-            translate(shadow.dx.toPx(), shadow.dy.toPx())
+            translate(customShadow.dx.toPx(), customShadow.dy.toPx())
             when (outline) {
                 is Outline.Rectangle -> drawRect(outline.rect.toSkiaRect(), skiaPaint)
                 is Outline.Rounded -> drawRRect(outline.roundRect.toSkiaRRect(), skiaPaint)
@@ -158,11 +158,11 @@ actual fun DrawScope.customShadow(
             restore()
         } else { // OUTER
             val layerPaint = org.jetbrains.skia.Paint()
-            saveLayer(size.toRect().inflate(max(shadow.blur.toPx(), shadow.spread.toPx()) * 8).toSkiaRect(), layerPaint)
+            saveLayer(size.toRect().inflate(max(customShadow.blur.toPx(), customShadow.spread.toPx()) * 8).toSkiaRect(), layerPaint)
 
-            val halfSpreadPx = shadow.spread.toPx() / 2f
+            val halfSpreadPx = customShadow.spread.toPx() / 2f
 
-            translate(shadow.dx.toPx() - halfSpreadPx, shadow.dy.toPx() - halfSpreadPx)
+            translate(customShadow.dx.toPx() - halfSpreadPx, customShadow.dy.toPx() - halfSpreadPx)
 
             // Draw shadow outline larger than original shape
             when (outline) {
@@ -174,7 +174,7 @@ actual fun DrawScope.customShadow(
             // Now subtract original shape
             skiaPaint.blendMode = org.jetbrains.skia.BlendMode.CLEAR
 
-            translate(-shadow.dx.toPx(), -shadow.dy.toPx())
+            translate(-customShadow.dx.toPx(), -customShadow.dy.toPx())
             when (val originalOutline = shape.createOutline(size, layoutDirection, this@customShadow)) {
                 is Outline.Rectangle -> drawRect(originalOutline.rect.toSkiaRect(), skiaPaint)
                 is Outline.Rounded -> drawRRect(originalOutline.roundRect.toSkiaRRect(), skiaPaint)

@@ -293,7 +293,7 @@ private var _powerSettingsIcon: ImageVector? = null
 
 // region  [ Custom Shadow ]   Modifier   ( on anything )
 @Immutable
-data class Shadow(
+data class CustomShadow(
     val color: Color = Color.Black,
     val blur: Dp = 8.dp,      // softness
     val spread: Dp = 0.dp,      // grow / shrink before blur
@@ -303,7 +303,7 @@ data class Shadow(
 )
 
 expect fun DrawScope.customShadow(
-    shadow: Shadow,
+    customShadow: CustomShadow,
     shape: Shape,
     size: Size,
     layoutDirection: LayoutDirection,
@@ -313,8 +313,8 @@ expect fun DrawScope.customShadow(
 // xx Before Deprecate&Delete keep the custom version here in case maybe there is need for a custom knobs ....
 // ──  ( 1 ) drawShadow implementation ────────────────────────────────────────────────
 fun Modifier.customShadow(
-    innerShadows: List<Shadow> = emptyList(),
-    outerShadows: List<Shadow> = emptyList(),
+    innerShadows: List<CustomShadow> = emptyList(),
+    outerShadows: List<CustomShadow> = emptyList(),
     shape: Shape = RectangleShape // or RoundedCornerShape(12.dp), CircleShape, etc.
 ) = this
     .drawBehind {
@@ -351,7 +351,7 @@ fun ButtonCustomShadow(
         modifier
             .customShadow(
                 outerShadows = listOf(
-                    Shadow(
+                    CustomShadow(
                         color = Color.White.copy(alpha = .25f),
                         blur = 12.dp,         // softness
                         spread = 8.dp,        // reaches further out
@@ -360,14 +360,14 @@ fun ButtonCustomShadow(
                     )
                 ),
                 innerShadows = listOf(
-                    Shadow(
+                    CustomShadow(
                         color = Color.Black.copy(alpha = .85f),
                         blur = 12.dp,
                         inset = true,
                         dy = 12.dp,
                         dx = 8.dp,
                     ),
-                    Shadow(
+                    CustomShadow(
                         color = Color.White.copy(alpha = .45f),
                         blur = 8.dp,
                         inset = true,

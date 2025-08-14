@@ -80,6 +80,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shadow
@@ -254,14 +255,14 @@ fun SkeuoButton(
     val bevel = Brush.verticalGradient(listOf(bevelLight, bevelDark))
     val rCorner = with(LocalDensity.current) { CornerRadius(cornerRadius.toPx()) }
 
-    val topShadow = Shadow(
+    val topShadow = CustomShadow(
         color = Color.White.copy(alpha = dynAlphaT),
         blur = pressBlur,
         dx = (-16).dp,
         dy = (-pressOffsetPx * 11 / 10).dp
     )
 
-    val bottomShadow = Shadow(
+    val bottomShadow = CustomShadow(
         color = Color.DarkGray.copy(alpha = .2f),
         blur = pressBlur,
         dx = 12.dp,
@@ -1184,23 +1185,24 @@ sealed class IslandState(
     val leading: Dp = 0.dp,
     val trailing: Dp = 0.dp,
     val bubble: DpSize = DpSize.Zero,
-    val cutOff: Float = .70f
+    val cutOff: Float = .66f
 ) {
     val hasBubble: Boolean get() = bubble.width > 0.dp
 
     data object Default : IslandState(
-        bubble = DpSize(60.dp, 48.dp)
+        bubble = DpSize(80.dp, 48.dp)
     )
 
     data object FaceUnlock : IslandState(
-        bubble = DpSize(60.dp, 48.dp),
-        island = DpSize(200.dp, 200.dp),
+        bubble = DpSize(64.dp, 48.dp),
+        island = DpSize(220.dp, 200.dp),
         cutOff = .25f
     )
 
     data object Split : IslandState(
-        bubble = DpSize(60.dp, 48.dp),
-        cutOff = .8f
+        island = DpSize(220.dp, 42.dp),
+        bubble = DpSize(64.dp, 48.dp),
+        cutOff = .4f
     )
 }
 
@@ -1242,7 +1244,10 @@ fun DynamicIsland(
     bubbleContent: @Composable BoxScope.() -> Unit = {}
 ) {
     val transition = updateTransition(state, label = "DynamicIslandTransition")
+
     val islandSize by transition.animateDpSize(label = "islandSize") { it.island }
+    val bubbleSize by transition.animateDpSize(label = "bubbleSize") { it.bubble }
+
     val animatedOffset by transition.animateDp(
         label = "bubbleOffset",
         transitionSpec = {
@@ -1254,62 +1259,110 @@ fun DynamicIsland(
         }
     ) { target ->
         when (target) {
-            IslandState.Split -> splitOffset
+            IslandState.Split      -> splitOffset
             IslandState.FaceUnlock -> -IslandState.Split.bubble.width
-            else -> 0.dp
+            else                   -> 0.dp
         }
     }
 
-    val bubbleAlpha by transition.animateFloat(label = "bubbleAlpha", transitionSpec = {
-        tween(300, delayMillis = 1000)
-    }) { if (it is IslandState.Split) 1f else 0f }
+    // fade ONLY foreground bubble content (not the blurred background)
+    val bubbleContentAlpha by transition.animateFloat(
+        label = "bubbleContentAlpha",
+        transitionSpec = { tween(300, delayMillis = 1000) }
+    ) { if (it is IslandState.Split) 1f else 0f }
 
-    val bubbleSize by transition.animateDpSize(label = "bubbleSize") { it.bubble }
-    val totalWidth = islandSize.width + bubbleSize.width + splitOffset
-    val totalHeight = islandSize.height * 2
+    // smooth cutoff so shader doesn’t snap at settle
+    val cutoff by transition.animateFloat(label = "cutoff") { it.cutOff }
+
+    // parent size (big enough for motion + blur bleed)
+    val overscan = 2.dp + blurRadius * 2
+    val totalWidth  = islandSize.width + bubbleSize.width + splitOffset + overscan * 2
+    val totalHeight = max(islandSize.height, bubbleSize.height) * 2 + overscan * 2
 
     MetaContainer(
         modifier.size(totalWidth, totalHeight),
-        cutoff = state.cutOff
+        cutoff = cutoff
     ) {
         Box(contentAlignment = Alignment.Center) {
-            // The Island <> Blur + MetaBall background
-            Box(
-                Modifier
-                    .size(islandSize)
-                    .blurEffect(blurRadius)
-                    .background(Color.Black, RoundedCornerShape(50))
+
+            // === single blurred background layer (both black shapes) ===
+            // Explicit size so the bubble's OFFSET stays inside this layer's bounds.
+            BlurField(
+                islandSize = islandSize,
+                bubbleSize = bubbleSize,
+                bubbleOffset = animatedOffset,
+                blurRadius = blurRadius
             )
 
-            // The Bubble <> Blur + MetaBall background
-            Box(
-                Modifier
-                    .size(bubbleSize)
-                    .offset(x = islandSize.width / 2 + animatedOffset)
-                    .blurEffect(blurRadius)
-                    .background(Color.Black, CircleShape)
-                    .alpha(bubbleAlpha)
-            )
-
-            // Island's content
+            // Foreground content (safe to fade)
             Box(
                 Modifier.size(islandSize),
                 contentAlignment = Alignment.Center,
                 content = islandContent
             )
-
-            // Bubble's content
             Box(
                 Modifier
                     .size(bubbleSize)
                     .offset(x = islandSize.width / 2 + animatedOffset)
-                    .alpha(bubbleAlpha),
+                    .alpha(bubbleContentAlpha),
                 contentAlignment = Alignment.Center
             ) {
                 bubbleContent()
             }
         }
     }
+
+    // --- debug logs; remove later ---
+    LaunchedEffect(state) { println("[DynamicIsland] state=$state") }
+    LaunchedEffect(islandSize, bubbleSize, animatedOffset, bubbleContentAlpha, cutoff) {
+        println("[DynamicIsland] island=$islandSize bubble=$bubbleSize x=${islandSize.width/2 + animatedOffset} contentAlpha=$bubbleContentAlpha cutoff=$cutoff")
+    }
+}
+
+/**
+ * One pinned blurred layer that contains BOTH black shapes.
+ * Critical: explicit layer size that accounts for motion + blur.
+ */
+@Composable
+private fun BlurField(
+    islandSize: DpSize,
+    bubbleSize: DpSize,
+    bubbleOffset: Dp,
+    blurRadius: Dp
+) {
+    // Size the BLUR LAYER to fully include: island + bubble at max offset + blur bleed
+    val bleed = 2.dp + blurRadius * 2
+    val layerWidth  = islandSize.width + bubbleSize.width + bubbleOffset + bleed * 2
+    val layerHeight = max(islandSize.height, bubbleSize.height) + bleed * 2
+
+    // We draw centered, so offsets are measured from the island center
+    Box(
+        Modifier
+            .size(layerWidth, layerHeight)
+            .graphicsLayer {
+                // pin to prevent settle-time flatten/merge in 1.9
+                compositingStrategy = CompositingStrategy.Offscreen
+            }
+            .blurEffect(blurRadius),
+        contentAlignment = Alignment.Center
+    ) {
+        // Island (opaque black; no alpha on blurred background)
+        Box(
+            Modifier
+                .size(islandSize)
+                .background(Color.Black, RoundedCornerShape(50))
+        )
+        // Bubble (opaque black; no alpha on blurred background)
+        Box(
+            Modifier
+                .size(bubbleSize)
+                .offset(x = islandSize.width / 2 + bubbleOffset)
+                .background(Color.Black, CircleShape)
+        )
+    }
+
+    // Visual sanity check;
+    // Box(Modifier.size(layerWidth, layerHeight).border(1.dp, Color.Red))
 }
 
 @Composable
@@ -1332,7 +1385,6 @@ fun Transition<IslandState>.animateDpSize(
     }
 )
 
-
 @Composable
 expect fun Modifier.blurEffect(radius: Dp): Modifier
 
@@ -1354,7 +1406,7 @@ fun Demo() {
     ) {
         DynamicIsland(
             state = state,
-            blurRadius = 6.dp,
+            blurRadius = 8.dp,
             splitOffset = 40.dp,
             islandContent = {
                 when (state) {
@@ -1482,14 +1534,14 @@ fun InnerAndOuterShadowDEMO() {
             .size(480.dp)
             .customShadow(
                 outerShadows = listOf(
-                    Shadow(
+                    CustomShadow(
                         color = Color.Cyan.copy(alpha = 0.5f),
                         blur = 32.dp,
                         spread = 18.dp,
                         dx = (-20).dp,
                         dy = (-20).dp
                     ),
-                    Shadow(
+                    CustomShadow(
                         color = Color.Magenta.copy(alpha = 0.2f),
                         blur = 26.dp,
                         spread = 34.dp,
@@ -1498,21 +1550,21 @@ fun InnerAndOuterShadowDEMO() {
                     )
                 ),
                 innerShadows = listOf(
-                    Shadow(
+                    CustomShadow(
                         color = Color.Black.copy(alpha = 0.5f),
                         blur = 14.dp,
                         inset = true,
                         dx = (-24).dp,
                         dy = (-38).dp
                     ),
-                    Shadow(
+                    CustomShadow(
                         color = Color.White.copy(alpha = 0.5f),
                         blur = 16.dp,
                         inset = true,
                         dx = 16.dp,
                         dy = 24.dp
                     ),
-                    Shadow(
+                    CustomShadow(
                         color = Color.Yellow.copy(alpha = 0.4f),
                         blur = 12.dp,
                         inset = true,

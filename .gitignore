@@ -33,3 +33,6 @@ google-services.json
 *.hprof
 
 .kotlin
+
+# Skia headers used in this project
+skia-headers.zip
