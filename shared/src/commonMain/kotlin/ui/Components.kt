@@ -69,9 +69,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.draw.innerShadow
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -103,14 +105,19 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpSize
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.lerp
 import androidx.compose.ui.unit.max
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.util.lerp
 import kotlinx.coroutines.launch
 import kotlin.jvm.JvmInline
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.round
+import kotlin.math.sqrt
 
 // region ───[ Helpers ]────────────────────────────────────────────────────────────
 const val GoldUnicode = "\u001B[38;5;214m"
@@ -873,25 +880,41 @@ private fun SendGlyph(tint: Color, glyphSize: Dp) {
     }
 }
 
-
-// ———————————————————————————————————————————————
-// 1) Caret spec mirrors your CSS
-// ———————————————————————————————————————————————
 data class CaretSpec(
     val color: Color = Color(0xAFB8FA10),   // #b8fa10af
     val glowSoft: Color = Color(0x808A6534),
     val glowStrong: Color = Color(0xB80C0C05),
     val glowHighlight: Color = Color(0x4DF5B504),
     val widthDp: Float = 2f,
-    val blinkMillis: Int = 1200
+    val blinkMillis: Int = 1266
 )
 
 
 /**
- * Ultimate LuxuryInput
- * - Cursor hidden, custom caret drawn ON the text layer via drawWithContent.
- * - Blink 1.2s (1 -> 0.5 -> 1), warm triple-glow breathing.
- * - Compose 1.8+ safe, no size.minDimension nonsense.
+ * LuxuryInput — lightsaber-style caret with breathing glow and inner bevel.
+ *
+ * ### What it is
+ * Custom BasicTextField that hides the system caret and renders a physically-plausible,
+ * animated “blade” directly on the text layer via `drawWithContent`, then finishes with a
+ * tiny offscreen inner-shadow stack for depth and rim light.
+ *
+ * ### Rendering pipeline (top → bottom in this file)
+ * 1) Text + selection (`drawContent()`).
+ * 2) Caret hull (vertical screen-tinted gradient; feathered so ends never drop to 0).
+ * 3) End-cap occlusion + horizontal bevel (Multiply) to keep glyphs readable under the bar.
+ * 4) Triple, breathing capsule glow (radial, additive) with two eased knees.
+ * 5) Offscreen inner-shadow stack (bevel occlusion + colored rim + tip falloff).
+ *
+ * ### Animation channels
+ * - `focusFade`: smooth appear/disappear.
+ * - `blinkAlpha`: 1 → 0.5 → 1 loop (gated by focus).
+ * - `glowProgress`: 0 ↔ 1 breathe loop driving glow size/intensity and inner-shadow radius/spread.
+ * - Speed-tuned caret motion: spring stiffness/damping derived from travel speed.
+ *
+ * ### Knobs you’ll actually touch
+ * - `caretSpec.widthDp`, `caretSpec.color`, `caretSpec.blinkMillis`
+ * - `caretSpec.glowSoft/Strong/Highlight` hues
+ * - Inner-shadow passes near the end (alpha/spread/radius/blendMode)
  */
 @Composable
 fun LuxuryInput(
@@ -915,22 +938,16 @@ fun LuxuryInput(
     val focusFade by updateTransition(targetState = focused, label = "focus")
         .animateFloat(
             transitionSpec = {
-                if (targetState) {
-                    // focus gained: slow + bouncy
-//                    spring(stiffness = 10f, dampingRatio = 0.03f)
-                    tween(durationMillis = 222, easing = FastOutSlowInEasing)
-                } else {
-                    // focus lost: glide out
-                    tween(durationMillis = 666, easing = FastOutSlowInEasing)
-                }
+                if (targetState) tween(222, easing = FastOutSlowInEasing)
+                else tween(666, easing = FastOutSlowInEasing)
             },
             label = "focusFade"
         ) { isFocused -> if (isFocused) 1f else 0f }
 
-    // 2) Only run the oscillators when we’re at least slightly visible
+    // Gate oscillators so we don’t churn offscreen.
     val runOsc = focusFade > 0.01f
 
-    // Blink: 1 → 0.5 → 1, but only when visible
+    // Blink 1 → 0.5 → 1
     val blinkAlpha by (
             if (runOsc) {
                 val t = rememberInfiniteTransition(label = "blink")
@@ -950,7 +967,7 @@ fun LuxuryInput(
         } else rememberUpdatedState(1f)
     )
 
-    // Glow: breathe only when visible
+    // Glow 0 ↔ 1
     val glowProgress by (
             if (runOsc) {
                 val t = rememberInfiniteTransition(label = "glow")
@@ -1009,8 +1026,8 @@ fun LuxuryInput(
 
         val dx = r.left - caretX.value
         val dy = r.top - caretY.value
-        val dist = kotlin.math.sqrt(dx * dx + dy * dy) // px
-        val pxPerMs = dist / dtMs.toFloat()            // "typing speed"
+        val dist = sqrt(dx * dx + dy * dy)      // px
+        val pxPerMs = dist / dtMs.toFloat()     // "typing speed"
 
         // Map speed → spring parameters.
         // Slow moves = softer + more damping; fast moves = stiffer + a touch bouncy.
@@ -1056,99 +1073,103 @@ fun LuxuryInput(
                 .fillMaxWidth()
                 .onFocusChanged { focused = it.isFocused }
                 .drawWithContent {
-                    // 1) paint text + selection first
+                    // Layer 0: text + selection
                     drawContent()
-
-                    // 2) custom caret
-                    val tl = layout ?: return@drawWithContent
-                    if (focusFade <= 0.01f) return@drawWithContent
+                    val env = (blinkAlpha * focusFade).coerceIn(0f, 1f)
+                    if (env <= 0.01f) return@drawWithContent
 
                     val left = caretX.value
                     val top  = caretY.value
                     val h    = caretH.value
-                    val center = Offset(left + caretWidthPx / 2f, top + h / 2f)
+                    val leftSnapped = round(left)
+                    val topSnapped = round(top)
+                    val widthSnapped = max(1f, round(caretWidthPx))
 
-                    // Base caret
-                    val leftSnapped = kotlin.math.round(left)
-                    val widthSnapped = kotlin.math.max(1f, kotlin.math.round(caretWidthPx))
-
+                    // Layer 1 - Caret: FEATHERED HULL + symmetric top/bottom fade (no mid ridge)
                     drawRect(
-                        color = caretSpec.color.copy(alpha = (blinkAlpha * focusFade).coerceIn(0f, 1f)),
-                        topLeft = Offset(leftSnapped, top),
-                        size = Size(widthSnapped, h),
-                        // lets glyphs under the bar brighten instead of getting dimmed
-                        blendMode = BlendMode.Screen
+                        brush = Brush.verticalGradient(
+                            0.05f to caretSpec.color.copy(alpha = 0.12f),
+                            0.50f to caretSpec.color.copy(alpha = 0.55f),
+                            0.95f to caretSpec.color.copy(alpha = 0.12f)
+                        ),
+                        topLeft = Offset(leftSnapped - 0.5f, topSnapped),
+                        size = Size(widthSnapped + 1f, h),
+                        blendMode = BlendMode.Screen,
+                        alpha = env
                     )
 
-                    // ---------- Capsule Glow with two knees (shader-free) ----------
+                    // Layer 2: end-cap occlusion so tips don’t look chopped
+                    drawRect(
+                        brush = Brush.verticalGradient(
+                            colorStops = arrayOf(
+                                0.00f to Color.Black.copy(alpha = 0.35f),
+                                0.18f to Color.Transparent,
+                                0.82f to Color.Transparent,
+                                1.00f to Color.Black.copy(alpha = 0.35f)
+                            ),
+                            startY = top, endY = top + h
+                        ),
+                        topLeft = Offset(leftSnapped, top),
+                        size = Size(widthSnapped, h),
+                        blendMode = BlendMode.Multiply,
+                        alpha = env
+                    )
+
+                    // Layer 3: micro horizontal bevel for readability over glyphs
+                    drawRect(
+                        brush = Brush.horizontalGradient(
+                            0f to Color.Black.copy(alpha = 0.28f),
+                            0.5f to Color.Transparent,
+                            1f to Color.Black.copy(alpha = 0.28f)
+                        ),
+                        topLeft = Offset(leftSnapped, top),
+                        size = Size(widthSnapped, h),
+                        blendMode = BlendMode.Multiply,
+                        alpha = 0.40f * env
+                    )
+
+                    // Layer 4: triple breathing capsule glow (radial + two knees)
                     fun lerp(a: Float, b: Float, t: Float) = a + (b - a) * t
                     val e = FastOutSlowInEasing.transform(glowProgress.coerceIn(0f, 1f))
-
-// knee thresholds (same idea as before, eased)
                     val knee1 = lerp(0.18f, 0.30f, e)
                     val knee2 = lerp(0.60f, 0.95f, e)
-
-// vertical softness factor so the pill breathes taller than wide
                     val vScale = 1.15f
 
                     fun drawGlowCapsule(
-                        basePad: Float,       // dp→px before call
-                        growPad: Float,       // dp→px before call
-                        color: Color,
-                        aCore: Float,         // alpha at center
-                        aMid: Float           // alpha at knee1
+                        basePad: Float, growPad: Float, color: Color, aCore: Float, aMid: Float
                     ) {
                         val pad = (basePad + growPad * e) * focusFade
-
-                        val leftPx = left - pad
-                        val topPx  = top  - pad * vScale
                         val w1 = caretWidthPx + pad * 2f
                         val h1 = h + pad * 2f * vScale
-
-                        // pill radius
-                        val r = min(w1, h1) / 2f
-
-                        // make the gradient fade to 0 *before* the rounded-rect edge → no box clipping
-                        val halfDiag = 0.5f * kotlin.math.sqrt(w1 * w1 + h1 * h1)
+                        val r  = min(w1, h1) / 2f
+                        val halfDiag = 0.5f * sqrt(w1 * w1 + h1 * h1)
                         val gradR = halfDiag * 0.90f
-
-                        val a0 = aCore * blinkAlpha * focusFade
-                        val a1 = aMid  * blinkAlpha * focusFade
 
                         drawRoundRect(
                             brush = Brush.radialGradient(
                                 colorStops = arrayOf(
-                                    0f     to color.copy(alpha = a0),
-                                    knee1  to color.copy(alpha = a1),
-                                    knee2  to Color.Transparent
+                                    0f    to color.copy(alpha = aCore),
+                                    knee1 to color.copy(alpha = aMid),
+                                    knee2 to Color.Transparent
                                 ),
                                 center = Offset(left + caretWidthPx / 2f, top + h / 2f),
                                 radius = gradR
                             ),
-                            topLeft = Offset(leftPx, topPx),
+                            topLeft = Offset(left - pad, top - pad * vScale),
                             size = Size(w1, h1),
                             cornerRadius = CornerRadius(r, r),
-                            blendMode = BlendMode.Plus
+                            blendMode = BlendMode.Plus,
+                            alpha = env
                         )
                     }
 
-// Soft / Strong / Highlight (same timing feel, pill-shaped)
-                    drawGlowCapsule(
-                        basePad = 2.dp.toPx(), growPad = 3.dp.toPx(),
-                        color = caretSpec.glowSoft,
-                        aCore = 0.33f, aMid = 0.18f
-                    )
-                    drawGlowCapsule(
-                        basePad = 6.dp.toPx(), growPad = 5.dp.toPx(),
-                        color = caretSpec.glowStrong,
-                        aCore = 0.28f, aMid = 0.12f
-                    )
-                    drawGlowCapsule(
-                        basePad = 10.dp.toPx(), growPad = 10.dp.toPx(),
-                        color = caretSpec.glowHighlight,
-                        aCore = 0.22f, aMid = 0.10f
-                    )
-// ---------- end Capsule Glow ----------
+                    drawGlowCapsule(2.dp.toPx(),  5.dp.toPx(), caretSpec.glowSoft,   0.32f, 0.20f)
+                    drawGlowCapsule(6.dp.toPx(), 10.dp.toPx(), caretSpec.glowStrong, 0.26f, 0.14f)
+                    if (glowProgress > 0.85f) {
+                        val k = ((glowProgress - 0.85f) / 0.15f).coerceIn(0f, 1f)
+                        drawGlowCapsule(9.dp.toPx(), 9.dp.toPx() * k, caretSpec.glowHighlight, 0.32f * k, 0.12f * k)
+                    }
+                // ---------- end Capsule Glow ----------
                 },
             // Placeholder
             decorationBox = { inner ->
@@ -1165,6 +1186,56 @@ fun LuxuryInput(
                 }
             }
         )
+
+        // Layer 5 (offscreen): inner-shadow stack for bevel + colored rim + tip falloff
+        if (focusFade > 0.01f) {
+            val env   = (blinkAlpha * focusFade).coerceIn(0f, 1f)
+            val t     = FastOutSlowInEasing.transform(glowProgress.coerceIn(0f, 1f))
+            val x     = round(caretX.value)
+            val y     = round(caretY.value)
+            val wPx   = max(1f, round(caretWidthPx))
+            val hPx   = caretH.value
+            val shape = RoundedCornerShape(percent = 50)
+            val d     = LocalDensity.current
+
+            // Inline overlay: bevel + occlusion that "breathes" with glow
+            Box(
+                Modifier
+                    .offset { IntOffset(x.toInt(), y.toInt()) }
+                    .size(with(d) { wPx.toDp() }, with(d) { hPx.toDp() })
+                    .clip(shape)
+                    .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                    // 5.1 occlusion ridge (depth). Strong at low e, backs off at peak.
+                    .innerShadow(shape) {
+                        radius = with(d) { lerp(2.dp, 8.dp, t).toPx() }
+                        spread = 2f
+                        color  = Color.Black
+                        alpha  = (0.94f - 0.42f * t) * env   // strong at low e, eases at peak
+                        blendMode = BlendMode.Multiply
+                        offset = Offset(0f, with(d) { 0.5.dp.toPx() })
+                    }
+                    // 5.2 colored rim (carved light). Switch blend to Softlight/Plus if you want neon.
+                    .innerShadow(shape) {
+                        val e = t
+                        radius = with(d) { lerp(1.dp, 12.dp, e).toPx() }
+                        spread = lerp(1f, 14f, e)
+                        color  = caretSpec.color
+                        alpha  = env * lerp(0.06f, 0.22f, e)                  // breathe with focus/blink
+                        blendMode = BlendMode.Multiply // OR --> if (e < 0.75f) BlendMode.Softlight else BlendMode.Plus
+                        offset = Offset.Zero
+                    }
+                    // 5.3 subtle tip falloff to round the ends more when glow dips
+                    .innerShadow(shape) {
+                        radius    = with(d) { lerp(1.dp, 4.dp, t).toPx() }
+                        spread    = lerp(0f, 4f, t)
+                        color     = Color.Black
+                        alpha     = lerp(0.01f, 0.16f, t)  // xx    stop was    0.18f * env
+                        blendMode = BlendMode.Multiply
+                        offset    = Offset(0f, with(d) { 2.dp.toPx() })
+
+                    }
+            )
+        }
     }
 }
 // endregion

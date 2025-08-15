@@ -143,8 +143,8 @@ fun LoginScreen(
 //                        }
 //                    }
 
-                    Demo()
-//                    LuxuryIslandQuickDemo()
+//                    Demo()
+                    LuxuryIslandQuickDemo()
 //                    Demo2()
 
                     // xx ========= Dynamic Island Work =============
