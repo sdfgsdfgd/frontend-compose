@@ -17,6 +17,7 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.animateIntAsState
 import androidx.compose.animation.core.animateValue
+import androidx.compose.animation.core.animateValueAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.keyframes
 import androidx.compose.animation.core.rememberInfiniteTransition
@@ -31,7 +32,9 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.defaultMinSize
@@ -44,6 +47,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.CornerBasedShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -67,6 +71,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.composed
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
@@ -96,6 +101,7 @@ import androidx.compose.ui.graphics.layer.GraphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextStyle
@@ -105,7 +111,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpSize
-import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.lerp
@@ -828,40 +834,51 @@ fun DynamicIslandWithLuxuryInput(
     splitOffset: Dp = 40.dp,
     onSend: (() -> Unit)? = null
 ) {
-    DynamicIsland(
-        state = state,
-        modifier = modifier,
-        blurRadius = blurRadius,
-        splitOffset = splitOffset,
-        islandContent = {
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                contentAlignment = Alignment.CenterStart
-            ) {
-                LuxuryInput(
-                    value = value,
-                    onValueChange = onValueChange,
-                    placeholder = placeholder,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-        },
-        bubbleContent = {
-            if (onSend != null) {
+    // We want parent bounds (window-wide). Use BoxWithConstraints at the wrapper level.
+    BoxWithConstraints(modifier) {
+        var adaptive by remember(state) { mutableStateOf(state.island) }
+        val contentPad = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+
+        DynamicIsland(
+            state = state,
+            blurRadius = blurRadius,
+            splitOffset = splitOffset,
+            islandSizeOverride = adaptive,  // <— feed the computed size here
+            islandContent = {
                 Box(
-                    Modifier
-                        .size(36.dp)
-                        .background(Color(0x22FFFFFF), CircleShape)
-                        .clickable { onSend() },
-                    contentAlignment = Alignment.Center
+                    Modifier.padding(contentPad),
+                    contentAlignment = Alignment.CenterStart
                 ) {
-                    SendGlyph(tint = Color.White, glyphSize = 16.dp)
+                    LuxuryInput(
+                        value = value,
+                        onValueChange = onValueChange,
+                        placeholder = placeholder,
+                        // Height growth requires wrapping. Keep it multi-line.
+                        singleLine = false,
+                        modifier = Modifier
+                            .fillMaxWidth() // fills current island width for rendering; OK
+                            .islandAutosize(
+                                base = state.island,
+                                maxWidth = this@BoxWithConstraints.maxWidth,    // window or parent width
+                                maxHeight = this@BoxWithConstraints.maxHeight,  // container height
+                                contentPadding = contentPad
+                            ) { adaptive = it }
+                    )
+                }
+            },
+            bubbleContent = {
+                if (onSend != null) {
+                    Box(
+                        Modifier
+                            .size(36.dp)
+                            .background(Color(0x22FFFFFF), CircleShape)
+                            .clickable { onSend() },
+                        contentAlignment = Alignment.Center
+                    ) { SendGlyph(tint = Color.White, glyphSize = 16.dp) }
                 }
             }
-        }
-    )
+        )
+    }
 }
 
 @Composable
@@ -1052,8 +1069,10 @@ fun LuxuryInput(
     Box(
         modifier
             .background(Color(0x33000000), RoundedCornerShape(10.dp))
-            .padding(horizontal = 12.dp, vertical = 4.dp),
-        contentAlignment = Alignment.CenterStart
+            .padding(horizontal = 12.dp)
+            .wrapContentHeight(Alignment.Top)
+            .wrapContentWidth(Alignment.Start),
+        contentAlignment = Alignment.TopStart
     ) {
         BasicTextField(
             value = value,
@@ -1192,16 +1211,20 @@ fun LuxuryInput(
             val env   = (blinkAlpha * focusFade).coerceIn(0f, 1f)
             val t     = FastOutSlowInEasing.transform(glowProgress.coerceIn(0f, 1f))
             val x     = round(caretX.value)
-            val y     = round(caretY.value)
+            val y     = caretY.value
             val wPx   = max(1f, round(caretWidthPx))
             val hPx   = caretH.value
             val shape = RoundedCornerShape(percent = 50)
             val d     = LocalDensity.current
+            val density = LocalDensity.current
+            val xOffsetDp = with(density) { caretX.value.toDp() }
+            val yOffsetDp = with(density) { caretY.value.toDp() }
 
             // Inline overlay: bevel + occlusion that "breathes" with glow
             Box(
                 Modifier
-                    .offset { IntOffset(x.toInt(), y.toInt()) }
+//                    .offset { IntOffset(x.roundToInt(), y.roundToInt()) }
+                    .offset(x = xOffsetDp, y = yOffsetDp)
                     .size(with(d) { wPx.toDp() }, with(d) { hPx.toDp() })
                     .clip(shape)
                     .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
@@ -1212,9 +1235,9 @@ fun LuxuryInput(
                         color  = Color.Black
                         alpha  = (0.94f - 0.42f * t) * env   // strong at low e, eases at peak
                         blendMode = BlendMode.Multiply
-                        offset = Offset(0f, with(d) { 0.5.dp.toPx() })
+                        offset = Offset.Zero
                     }
-                    // 5.2 colored rim (carved light). Switch blend to Softlight/Plus if you want neon.
+//                    // 5.2 colored rim (carved light). Switch blend to Softlight/Plus if you want neon.
                     .innerShadow(shape) {
                         val e = t
                         radius = with(d) { lerp(1.dp, 12.dp, e).toPx() }
@@ -1231,8 +1254,7 @@ fun LuxuryInput(
                         color     = Color.Black
                         alpha     = lerp(0.01f, 0.16f, t)  // xx    stop was    0.18f * env
                         blendMode = BlendMode.Multiply
-                        offset    = Offset(0f, with(d) { 2.dp.toPx() })
-
+                        offset    = Offset.Zero
                     }
             )
         }
@@ -1291,6 +1313,7 @@ sealed class IslandState(
  *   - Uses `updateTransition` for smooth animations.
  *   - Supports blur effects and split states.
  *
+ *                         💎✨
  *
  *
  *   Note from GPT4.5:
@@ -1298,8 +1321,6 @@ sealed class IslandState(
  *       ✅ Adaptive velocity: Springs adjust beautifully when interrupted.
  *       ✅ Fluid & realistic: Natural easing and bounce effects, no more teleports.
  *       ✅ Concise & idiomatic: Exactly how Compose recommends handling complex animations.
- *
- *       You’re now running the absolute gold-standard implementation for animated transitions in Compose. 💎✨
  */
 // TODO: Bug1:      1..2 px border crop on Island, in split state  ( caused by Shader+Blur stack )
 // TODO: Bug2:   (related to bug1?) UPGRADE TO 1.9.0-beta01 causes bubble to disappear at last millis
@@ -1311,12 +1332,13 @@ fun DynamicIsland(
     modifier: Modifier = Modifier,
     blurRadius: Dp = 4.dp,
     splitOffset: Dp = 40.dp,
+    islandSizeOverride: DpSize? = null,
     islandContent: @Composable BoxScope.() -> Unit = {},
     bubbleContent: @Composable BoxScope.() -> Unit = {}
 ) {
     val transition = updateTransition(state, label = "DynamicIslandTransition")
 
-    val islandSize by transition.animateDpSize(label = "islandSize") { it.island }
+    // bubble + offset stay tied to state transitions
     val bubbleSize by transition.animateDpSize(label = "bubbleSize") { it.bubble }
 
     val animatedOffset by transition.animateDp(
@@ -1345,7 +1367,23 @@ fun DynamicIsland(
     // smooth cutoff so shader doesn’t snap at settle
     val cutoff by transition.animateFloat(label = "cutoff") { it.cutOff }
 
-    // parent size (big enough for motion + blur bleed)
+    // island size: state-driven by default, override animates independently
+    val stateIsland by transition.animateDpSize(label = "islandSizeFromState") { it.island }
+    val targetIsland = islandSizeOverride ?: stateIsland
+    val islandSize by animateValueAsState(
+        targetValue = targetIsland,
+        typeConverter = TwoWayConverter(
+            convertToVector = { AnimationVector2D(it.width.value, it.height.value) },
+            convertFromVector = { DpSize(it.v1.dp, it.v2.dp) }
+        ),
+        animationSpec = spring(
+            stiffness = Spring.StiffnessVeryLow,
+            dampingRatio = 0.45f
+        ),
+        label = "islandSizeAnim"
+    )
+
+    // overscan and layout, unchanged
     val overscan = 2.dp + blurRadius * 2
     val totalWidth  = islandSize.width + bubbleSize.width + splitOffset + overscan * 2
     val totalHeight = max(islandSize.height, bubbleSize.height) * 2 + overscan * 2
@@ -1376,7 +1414,7 @@ fun DynamicIsland(
                     .size(bubbleSize)
                     .offset(x = islandSize.width / 2 + animatedOffset)
                     .alpha(bubbleContentAlpha),
-                contentAlignment = Alignment.Center
+                contentAlignment = Alignment.Center,
             ) {
                 bubbleContent()
             }
@@ -1465,6 +1503,70 @@ expect fun MetaContainer(
     cutoff: Float = 0.5f,
     content: @Composable BoxScope.() -> Unit
 )
+
+@Stable
+fun Modifier.islandAutosize(
+    base: DpSize,
+    maxWidth: Dp,
+    maxHeight: Dp,
+    contentPadding: PaddingValues = PaddingValues(0.dp),
+    onTarget: (DpSize) -> Unit
+): Modifier = composed {
+    var last by remember { mutableStateOf(IntSize(-1, -1)) } // keep state OUTSIDE layout{}
+
+    this.then(
+        Modifier.layout { measurable, constraints ->
+            if (constraints.maxWidth == 0 || constraints.maxHeight == 0) {
+                val p = measurable.measure(constraints)
+                return@layout layout(p.width, p.height) { p.place(0, 0) }
+            }
+
+            val baseW = base.width.roundToPx()
+            val baseH = base.height.roundToPx()
+
+            val capW = maxWidth.roundToPx().coerceAtLeast(1)
+            val capH = maxHeight.roundToPx().coerceAtLeast(1)
+
+            val heightHint = baseH.coerceAtMost(capH)
+            val oneLineW = max(1, measurable.maxIntrinsicWidth(heightHint))
+            val targetW = oneLineW.coerceAtLeast(baseW).coerceAtMost(capW)
+
+            val wrappedH = measurable.maxIntrinsicHeight(max(1, targetW))
+            val targetH = wrappedH.coerceAtLeast(baseH).coerceAtMost(capH)
+
+            val padX = (contentPadding.calculateLeftPadding(layoutDirection) +
+                    contentPadding.calculateRightPadding(layoutDirection)).roundToPx()
+            val padY = (contentPadding.calculateTopPadding() +
+                    contentPadding.calculateBottomPadding()).roundToPx()
+
+            val out = IntSize(
+                (targetW + padX).coerceAtLeast(1),
+                (targetH + padY).coerceAtLeast(1)
+            )
+
+            if (out != last) {
+                last = out
+                onTarget(DpSize(out.width.toDp(), out.height.toDp()))
+            }
+
+            // RE-MEASURE WITH YOUR TARGET SIZE
+            val targetConstraints = constraints.copy(
+                minWidth = out.width,
+                maxWidth = out.width,
+                minHeight = out.height,
+                maxHeight = out.height
+            )
+
+            val measuredChild = measurable.measure(targetConstraints)
+
+            layout(measuredChild.width, measuredChild.height) {
+                measuredChild.place(0, 0)
+            }
+        }
+    )
+}
+
+
 
 @Composable
 fun Demo() {
