@@ -1,6 +1,7 @@
 package ui.login
 
 import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -48,13 +50,15 @@ import kotlinx.datetime.format.char
 import kotlinx.datetime.toLocalDateTime
 import platform.BrowserLauncher
 import platform.LocalPlatformContext
-import ui.ColorCloudDEMO
-import ui.Demo
+import ui.ButtonCustomShadow
+import ui.Demo3ColorClouds
+import ui.Demo1DynamicIsland
 import ui.GlassCard
 import ui.GlassStyle
 import ui.GlassTopBar
 import ui.GoldUnicode
-import ui.LuxuryIslandQuickDemo
+import ui.Demo2DynamicIslandWLuxuryInput
+import ui.Demo4CustomShadows
 import ui.SkeuoButton
 import ui.SkeuoText
 import ui.login.model.AuthState
@@ -88,10 +92,10 @@ fun LoginScreen(
         }
     }
 
-    Box(modifier.fillMaxSize().padding(top = 184.dp), contentAlignment = Alignment.TopCenter) { // Center) {
+    Box(modifier.wrapContentSize(), contentAlignment = Alignment.TopCenter) { // Center) {
         when (authState) {
             is AuthState.Unauthenticated ->
-                Column {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     SkeuoButton(
                         text = "Login with GitHub",
                         textColor = Color.White.copy(alpha = 0.4f), // Color(0xFF191192), // .copy(alpha = 0.6f), // Color(0x33FFFFFF), // .copy(alpha = .65f),
@@ -109,52 +113,11 @@ fun LoginScreen(
                         }
                     }
 
+                    // xx --------------[ DEMOS ]----------------------------------------------------------------------------------------------
+                    //
                     // xx LiquidGlassDemo()    //  <->    [ WIP ]  ( Last milestone uses Call site of Desktop ? ) ( compose last steps not completed yet )
-
-                    //
-                    //
-                    //
-                    //
-                    // xx ========= Dynamic Island Work =============
-
-                    // STATE
-//                    var split by remember { mutableStateOf(false) }
-//
-//                    Column(
-//                        modifier = Modifier.fillMaxSize(),
-//                        horizontalAlignment = Alignment.CenterHorizontally,
-//                        verticalArrangement = Arrangement.Center
-//                    ) {
-//                        DynamicIsland(
-//                            isSplit = split,
-//                            blurRadius = 6.dp,
-//                            cutoff = 0.8f,
-//                            islandSize = DpSize(220.dp, 48.dp),
-//                            bubbleSize = DpSize(60.dp, 48.dp),
-//                            splitOffset = 40.dp,
-//                            islandContent = { Text("🌴", fontSize = 20.sp, color = Color.White) },
-//                            bubbleContent = { Text("⏳", fontSize = 20.sp, color = Color.White) }
-//                        )
-//
-//                        Spacer(Modifier.height(40.dp))
-//
-//                        Button(onClick = { split = !split }) {
-//                            Text(if (split) "Merge" else "Split")
-//                        }
-//                    }
-
-//                    Demo()
-                    LuxuryIslandQuickDemo()
-//                    Demo2()
-
-                    // xx ========= Dynamic Island Work =============
-                    //
-                    //
-                    //
-                    //
-                    //
-                    //
-
+//                    Demo1DynamicIsland()
+                    Demo2DynamicIslandWLuxuryInput()
 //                    ButtonCustomShadow(
 //                        text = "sdfjgsjsdfsdfdfg",
 //                        onClick = {},
@@ -165,8 +128,9 @@ fun LoginScreen(
 //                            .height(64.dp)
 //                            .background(Color.Transparent) // Color(0x010101).copy(alpha = 0.4f)),
 //                    )
-                    ColorCloudDEMO()
-                    // InnerAndOuterShadowDEMO()
+//                    Demo3ColorClouds()
+//                    Demo4CustomShadows()
+                    // xx --------------[ DEMOS ]----------------------------------------------------------------------------------------------
                 }
 
             is AuthState.Error -> TODO()

@@ -1,26 +1,19 @@
 package net.sdfgsdfg
 
-import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.runtime.Composable
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.window.WindowDraggableArea
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.awt.ComposeWindow
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.WindowPosition
-import androidx.compose.ui.window.WindowState
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import platform.GlobalHotKey
@@ -28,6 +21,7 @@ import platform.LocalPlatformContext
 import platform.LocalWindowMetrics
 import platform.PlatformContext
 import platform.installTrayHook
+import platform.rememberIsWindowMoving
 import platform.rememberWindowMetrics
 import ui.MainScreen
 import java.awt.Desktop
@@ -40,6 +34,12 @@ private var winRef: ComposeWindow? = null
 
 fun main() = application {
     System.setProperty("compose.interop.blending", "true")
+    // Helps Swing/Compose interop scenarios; documented in JB docs/issues
+    // (no effect on Linux; safe on macOS/Windows)
+    System.setProperty("sun.awt.noerasebackground", "true")
+    System.setProperty("sun.awt.erasebackgroundonresize", "false")
+    System.setProperty("skiko.renderApi", "METAL") // Keep using Metal on macOS; default anyway
+    System.setProperty("SKIKO_CLEAR_COLOR", "0x00000000")
 
     val screenState = Toolkit.getDefaultToolkit().screenSize
     val windowState = rememberWindowState(
@@ -73,42 +73,21 @@ fun main() = application {
             installTrayHook(window)
         }
 
+        val isMoving by rememberIsWindowMoving(windowState, debounceMs = 300)
+
         CompositionLocalProvider(
             LocalPlatformContext provides PlatformContext(),
             LocalWindowMetrics provides rememberWindowMetrics(),
         ) {
-            DraggableWindow(windowState) {
-                // xx  LiquidGlassDemoDesktop()   // [ 27.07.05 ]  Use this callsite instead of LoginScreen() of commonMain
+            WindowDraggableArea(
+                Modifier.fillMaxWidth()
+            ) {
                 MainScreen(
                     metrics = LocalWindowMetrics.current,
-                    autoPlay = true
+                    autoPlay = true,
+                    isWindowMoving = isMoving
                 )
             }
         }
     }
-}
-
-@Composable
-private fun DraggableWindow(
-    state: WindowState,
-    content: @Composable () -> Unit
-) {
-    val density = LocalDensity.current
-    var dragX by remember { mutableStateOf(0.dp) }
-    var dragY by remember { mutableStateOf(0.dp) }
-
-    LaunchedEffect(dragX, dragY) {
-        state.position = WindowPosition(state.position.x + dragX, state.position.y + dragY)
-    }
-
-    Box(
-        Modifier
-            .fillMaxSize()
-            .pointerInput(Unit) {
-                detectDragGestures { _, drag ->
-                    dragX += with(density) { drag.x.toDp() }
-                    dragY += with(density) { drag.y.toDp() }
-                }
-            }
-    ) { content() }
 }

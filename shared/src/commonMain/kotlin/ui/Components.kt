@@ -47,6 +47,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.CornerBasedShape
@@ -779,18 +780,18 @@ expect object TimeMark {
 // DynamicIsland + LuxuryInput integration
 // ———————————————————————————————————————————————
 // ———————————————————————————————————————————————
-// 5) One-call demo you can drop anywhere
-//    Uses your existing DynamicIsland + IslandState
+// One-call demo you can drop anywhere
+//    Uses existing DynamicIsland + IslandState
 // ———————————————————————————————————————————————
 @Composable
-fun LuxuryIslandQuickDemo() {
+fun Demo2DynamicIslandWLuxuryInput() {
     var text by remember { mutableStateOf(TextFieldValue("")) }
     var islandState by remember { mutableStateOf<IslandState>(IslandState.Split) }
 
     Column(
         Modifier
-            .fillMaxWidth()
-            .padding(24.dp),
+            .wrapContentSize()
+            .padding(12.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         DynamicIslandWithLuxuryInput(
@@ -836,14 +837,21 @@ fun DynamicIslandWithLuxuryInput(
 ) {
     // We want parent bounds (window-wide). Use BoxWithConstraints at the wrapper level.
     BoxWithConstraints(modifier) {
+        println("📌 BoxWithConstraints recomposed, maxWidth: $maxWidth")
+
+        val stableMaxWidth = remember { maxWidth }   // cache maxWidth ONCE
+        val stableMaxHeight = remember { maxHeight }
+
         var adaptive by remember(state) { mutableStateOf(state.island) }
+        println("🔥 Adaptive size state updated: $adaptive")
+
         val contentPad = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
 
         DynamicIsland(
             state = state,
             blurRadius = blurRadius,
             splitOffset = splitOffset,
-            islandSizeOverride = adaptive,  // <— feed the computed size here
+            islandSizeOverride = adaptive.also { println("🛑 islandSizeOverride applied: $it") },
             islandContent = {
                 Box(
                     Modifier.padding(contentPad),
@@ -853,15 +861,13 @@ fun DynamicIslandWithLuxuryInput(
                         value = value,
                         onValueChange = onValueChange,
                         placeholder = placeholder,
-                        // Height growth requires wrapping. Keep it multi-line.
                         singleLine = false,
                         modifier = Modifier
-                            .fillMaxWidth() // fills current island width for rendering; OK
                             .islandAutosize(
                                 base = state.island,
-                                maxWidth = this@BoxWithConstraints.maxWidth,    // window or parent width
-                                maxHeight = this@BoxWithConstraints.maxHeight,  // container height
-                                contentPadding = contentPad
+                                maxWidth = stableMaxWidth.also { println("🌟 maxWidth passed to islandAutosize: $it") },
+                                maxHeight = stableMaxHeight,
+//                                contentPadding = contentPad
                             ) { adaptive = it }
                     )
                 }
@@ -906,9 +912,8 @@ data class CaretSpec(
     val blinkMillis: Int = 1266
 )
 
-
 /**
- * LuxuryInput — lightsaber-style caret with breathing glow and inner bevel.
+ * LuxuryInput — realistic saber / lantern style caret with breathing triple-glow and 3 inner layers (hail skeuo).
  *
  * ### What it is
  * Custom BasicTextField that hides the system caret and renders a physically-plausible,
@@ -963,47 +968,29 @@ fun LuxuryInput(
 
     // Gate oscillators so we don’t churn offscreen.
     val runOsc = focusFade > 0.01f
+    val osc = rememberInfiniteTransition(label = "osc")
+    val blinkAlpha by if (runOsc) osc.animateFloat(
+        initialValue = 1f, targetValue = 1f, label = "blinkAlpha",
+        animationSpec = infiniteRepeatable(
+            animation = keyframes {
+                durationMillis = caretSpec.blinkMillis
+                1f at 0; 0.5f at caretSpec.blinkMillis / 2; 1f at caretSpec.blinkMillis
+            }
+        )
+    ) else rememberUpdatedState(1f)
 
-    // Blink 1 → 0.5 → 1
-    val blinkAlpha by (
-            if (runOsc) {
-                val t = rememberInfiniteTransition(label = "blink")
-                t.animateFloat(
-                    initialValue = 1f,
-                    targetValue = 1f,
-                    animationSpec = infiniteRepeatable(
-                        animation = keyframes {
-                            durationMillis = caretSpec.blinkMillis
-                            1f at 0
-                            0.5f at caretSpec.blinkMillis / 2
-                            1f at caretSpec.blinkMillis
-                        }
-                    ),
-                    label = "blinkAlpha"
-                )
-        } else rememberUpdatedState(1f)
-    )
-
-    // Glow 0 ↔ 1
-    val glowProgress by (
-            if (runOsc) {
-                val t = rememberInfiniteTransition(label = "glow")
-                t.animateFloat(
-                    initialValue = 0f,
-                    targetValue = 1f,
-                    animationSpec = infiniteRepeatable(
-                        animation = tween(900, easing = FastOutSlowInEasing),
-                        repeatMode = RepeatMode.Reverse
-                    ),
-                    label = "glowProgress"
-                )
-        } else rememberUpdatedState(0f)
-    )
+    val glowProgress by if (runOsc) osc.animateFloat(
+        initialValue = 0f, targetValue = 1f, label = "glowProgress",
+        animationSpec = infiniteRepeatable(
+            animation = tween(900, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        )
+    ) else rememberUpdatedState(0f)
 
     // ---------- SPEED‑TUNED CARET MOTION ----------
-    val density = LocalDensity.current
-    val caretWidthPx = with(density) { caretSpec.widthDp.dp.toPx() }
-    val minCaretHeightPx = with(density) { 18.dp.toPx() }
+    val d = LocalDensity.current
+    val caretWidthPx = with(d) { caretSpec.widthDp.dp.toPx() }
+    val minCaretHeightPx = with(d) { 18.dp.toPx() }
 
     // Animated caret channels
     val caretX = remember { Animatable(0f) }
@@ -1051,7 +1038,7 @@ fun LuxuryInput(
         fun lerp(a: Float, b: Float, t: Float) = a + (b - a) * t
         val t = (pxPerMs / 2.5f).coerceIn(0f, 1f) // 0..~2.5 px/ms
         val stiffness = lerp(220f, 1600f, t)
-        val damping   = lerp(0.90f, 0.70f, t)
+        val damping = lerp(0.90f, 0.70f, t)
 
         val spec = spring(stiffness = stiffness, dampingRatio = damping, visibilityThreshold = 0.5f)
 
@@ -1084,10 +1071,25 @@ fun LuxuryInput(
             singleLine = singleLine,
             textStyle = textStyle,
             cursorBrush = SolidColor(Color.Transparent), // hide native caret
-            onTextLayout = {
-                println("TextLayout updated: ${layout?.layoutInput?.text?.text}")
+            onTextLayout = { it ->
+                // xx Below checks are necessary instead of doing `layout = it  (nl)`  because otherwise
+                //  --> `.islandAutosize()`  calls intrinsics on BasicTextField (maxIntrinsicWidth/Height) every measure
+                //  -->  guarded onTextLayout (ignore minWidth==0 || minHeight==0 || size==0, and de-dupe).
+                //            stops caret/layout state from reacting to pre-passes
+                val c = it.layoutInput.constraints
+                val isPrepass =
+                    c.minWidth == 0 || c.minHeight == 0 || it.size.width == 0 || it.size.height == 0
+                if (isPrepass) return@BasicTextField
 
-                layout = it },
+                // Optional: de-dupe
+                val same = layout?.size == it.size &&
+                        layout?.layoutInput?.constraints == it.layoutInput.constraints &&
+                        layout?.layoutInput?.text?.text == it.layoutInput.text.text
+                if (!same) {
+                    layout = it
+                    println("Final layout accepted: ${it.size}  constraints=$c")
+                }
+            },
             modifier = Modifier
                 .fillMaxWidth()
                 .onFocusChanged { focused = it.isFocused }
@@ -1098,8 +1100,8 @@ fun LuxuryInput(
                     if (env <= 0.01f) return@drawWithContent
 
                     val left = caretX.value
-                    val top  = caretY.value
-                    val h    = caretH.value
+                    val top = caretY.value
+                    val h = caretH.value
                     val leftSnapped = round(left)
                     val topSnapped = round(top)
                     val widthSnapped = max(1f, round(caretWidthPx))
@@ -1160,14 +1162,14 @@ fun LuxuryInput(
                         val pad = (basePad + growPad * e) * focusFade
                         val w1 = caretWidthPx + pad * 2f
                         val h1 = h + pad * 2f * vScale
-                        val r  = min(w1, h1) / 2f
+                        val r = min(w1, h1) / 2f
                         val halfDiag = 0.5f * sqrt(w1 * w1 + h1 * h1)
                         val gradR = halfDiag * 0.90f
 
                         drawRoundRect(
                             brush = Brush.radialGradient(
                                 colorStops = arrayOf(
-                                    0f    to color.copy(alpha = aCore),
+                                    0f to color.copy(alpha = aCore),
                                     knee1 to color.copy(alpha = aMid),
                                     knee2 to Color.Transparent
                                 ),
@@ -1182,13 +1184,13 @@ fun LuxuryInput(
                         )
                     }
 
-                    drawGlowCapsule(2.dp.toPx(),  5.dp.toPx(), caretSpec.glowSoft,   0.32f, 0.20f)
+                    drawGlowCapsule(2.dp.toPx(), 5.dp.toPx(), caretSpec.glowSoft, 0.32f, 0.20f)
                     drawGlowCapsule(6.dp.toPx(), 10.dp.toPx(), caretSpec.glowStrong, 0.26f, 0.14f)
                     if (glowProgress > 0.85f) {
                         val k = ((glowProgress - 0.85f) / 0.15f).coerceIn(0f, 1f)
                         drawGlowCapsule(9.dp.toPx(), 9.dp.toPx() * k, caretSpec.glowHighlight, 0.32f * k, 0.12f * k)
                     }
-                // ---------- end Capsule Glow ----------
+                    // ---------- end Capsule Glow ----------
                 },
             // Placeholder
             decorationBox = { inner ->
@@ -1208,22 +1210,17 @@ fun LuxuryInput(
 
         // Layer 5 (offscreen): inner-shadow stack for bevel + colored rim + tip falloff
         if (focusFade > 0.01f) {
-            val env   = (blinkAlpha * focusFade).coerceIn(0f, 1f)
-            val t     = FastOutSlowInEasing.transform(glowProgress.coerceIn(0f, 1f))
-            val x     = round(caretX.value)
-            val y     = caretY.value
-            val wPx   = max(1f, round(caretWidthPx))
-            val hPx   = caretH.value
+            val env = (blinkAlpha * focusFade).coerceIn(0f, 1f)
+            val t = FastOutSlowInEasing.transform(glowProgress.coerceIn(0f, 1f))
+            val wPx = max(1f, round(caretWidthPx))
+            val hPx = caretH.value
             val shape = RoundedCornerShape(percent = 50)
-            val d     = LocalDensity.current
-            val density = LocalDensity.current
-            val xOffsetDp = with(density) { caretX.value.toDp() }
-            val yOffsetDp = with(density) { caretY.value.toDp() }
+            val xOffsetDp = with(d) { caretX.value.toDp() }
+            val yOffsetDp = with(d) { caretY.value.toDp() }
 
             // Inline overlay: bevel + occlusion that "breathes" with glow
             Box(
                 Modifier
-//                    .offset { IntOffset(x.roundToInt(), y.roundToInt()) }
                     .offset(x = xOffsetDp, y = yOffsetDp)
                     .size(with(d) { wPx.toDp() }, with(d) { hPx.toDp() })
                     .clip(shape)
@@ -1232,29 +1229,29 @@ fun LuxuryInput(
                     .innerShadow(shape) {
                         radius = with(d) { lerp(2.dp, 8.dp, t).toPx() }
                         spread = 2f
-                        color  = Color.Black
-                        alpha  = (0.94f - 0.42f * t) * env   // strong at low e, eases at peak
+                        color = Color.Black
+                        alpha = (0.94f - 0.42f * t) * env   // strong at low e, eases at peak
                         blendMode = BlendMode.Multiply
                         offset = Offset.Zero
                     }
-//                    // 5.2 colored rim (carved light). Switch blend to Softlight/Plus if you want neon.
+//                    // 5.2 colored rim (carved light).  Softlight/Plus  also looks nice
                     .innerShadow(shape) {
                         val e = t
                         radius = with(d) { lerp(1.dp, 12.dp, e).toPx() }
                         spread = lerp(1f, 14f, e)
-                        color  = caretSpec.color
-                        alpha  = env * lerp(0.06f, 0.22f, e)                  // breathe with focus/blink
+                        color = caretSpec.color
+                        alpha = env * lerp(0.06f, 0.22f, e)                  // breathe with focus/blink
                         blendMode = BlendMode.Multiply // OR --> if (e < 0.75f) BlendMode.Softlight else BlendMode.Plus
                         offset = Offset.Zero
                     }
                     // 5.3 subtle tip falloff to round the ends more when glow dips
                     .innerShadow(shape) {
-                        radius    = with(d) { lerp(1.dp, 4.dp, t).toPx() }
-                        spread    = lerp(0f, 4f, t)
-                        color     = Color.Black
-                        alpha     = lerp(0.01f, 0.16f, t)  // xx    stop was    0.18f * env
+                        radius = with(d) { lerp(1.dp, 4.dp, t).toPx() }
+                        spread = lerp(0f, 4f, t)
+                        color = Color.Black
+                        alpha = lerp(0.01f, 0.16f, t)  // xx    stop was    0.18f * env
                         blendMode = BlendMode.Multiply
-                        offset    = Offset.Zero
+                        offset = Offset.Zero
                     }
             )
         }
@@ -1352,9 +1349,9 @@ fun DynamicIsland(
         }
     ) { target ->
         when (target) {
-            IslandState.Split      -> splitOffset
+            IslandState.Split -> splitOffset
             IslandState.FaceUnlock -> -IslandState.Split.bubble.width
-            else                   -> 0.dp
+            else -> 0.dp
         }
     }
 
@@ -1383,10 +1380,8 @@ fun DynamicIsland(
         label = "islandSizeAnim"
     )
 
-    // overscan and layout, unchanged
-    val overscan = 2.dp + blurRadius * 2
-    val totalWidth  = islandSize.width + bubbleSize.width + splitOffset + overscan * 2
-    val totalHeight = max(islandSize.height, bubbleSize.height) * 2 + overscan * 2
+    val totalWidth = islandSize.width + bubbleSize.width + splitOffset
+    val totalHeight = max(islandSize.height, bubbleSize.height)
 
     MetaContainer(
         modifier.size(totalWidth, totalHeight),
@@ -1421,10 +1416,9 @@ fun DynamicIsland(
         }
     }
 
-    // --- debug logs; remove later ---
     LaunchedEffect(state) { println("[DynamicIsland] state=$state") }
     LaunchedEffect(islandSize, bubbleSize, animatedOffset, bubbleContentAlpha, cutoff) {
-        println("[DynamicIsland] island=$islandSize bubble=$bubbleSize x=${islandSize.width/2 + animatedOffset} contentAlpha=$bubbleContentAlpha cutoff=$cutoff")
+        println("[DynamicIsland] island=$islandSize bubble=$bubbleSize x=${islandSize.width / 2 + animatedOffset} contentAlpha=$bubbleContentAlpha cutoff=$cutoff")
     }
 }
 
@@ -1441,7 +1435,7 @@ private fun BlurField(
 ) {
     // Size the BLUR LAYER to fully include: island + bubble at max offset + blur bleed
     val bleed = 2.dp + blurRadius * 2
-    val layerWidth  = islandSize.width + bubbleSize.width + bubbleOffset + bleed * 2
+    val layerWidth = islandSize.width + bubbleSize.width + bubbleOffset + bleed * 2
     val layerHeight = max(islandSize.height, bubbleSize.height) + bleed * 2
 
     // We draw centered, so offsets are measured from the island center
@@ -1512,7 +1506,7 @@ fun Modifier.islandAutosize(
     contentPadding: PaddingValues = PaddingValues(0.dp),
     onTarget: (DpSize) -> Unit
 ): Modifier = composed {
-    var last by remember { mutableStateOf(IntSize(-1, -1)) } // keep state OUTSIDE layout{}
+    var last by remember { mutableStateOf(IntSize(-1, -1)) }
 
     this.then(
         Modifier.layout { measurable, constraints ->
@@ -1549,7 +1543,7 @@ fun Modifier.islandAutosize(
                 onTarget(DpSize(out.width.toDp(), out.height.toDp()))
             }
 
-            // RE-MEASURE WITH YOUR TARGET SIZE
+            // RE-MEASURE WITH TARGET SIZE
             val targetConstraints = constraints.copy(
                 minWidth = out.width,
                 maxWidth = out.width,
@@ -1559,6 +1553,16 @@ fun Modifier.islandAutosize(
 
             val measuredChild = measurable.measure(targetConstraints)
 
+            // Debugging for Performance ( Check against Stability of Island Resize compositions )
+            println("🎯 heightHint: $heightHint (baseH: $baseH, capH: $capH)")
+            println("🔍 oneLineW (maxIntrinsicWidth): $oneLineW")
+            println("📌 targetW calculated: $targetW (baseW: $baseW, capW: $capW)")
+            println("📐 wrappedH (maxIntrinsicHeight): $wrappedH")
+            println("📌 targetH calculated: $targetH (baseH: $baseH, capH: $capH)")
+            println("⚠️ out (IntSize) calculated: width=${targetW + padX}, height=${targetH + padY}")
+            println("✅ targetConstraints: $targetConstraints")
+            println("🚨 measuredChild size: ${measuredChild.width} x ${measuredChild.height}")
+
             layout(measuredChild.width, measuredChild.height) {
                 measuredChild.place(0, 0)
             }
@@ -1566,10 +1570,8 @@ fun Modifier.islandAutosize(
     )
 }
 
-
-
 @Composable
-fun Demo() {
+fun Demo1DynamicIsland() {
     var state by remember { mutableStateOf<IslandState>(IslandState.Default) }
 
     Column(
@@ -1612,7 +1614,7 @@ fun Demo() {
 
 //────[ Color Cloud ]────────────────────────────────────────────────────────────
 @Composable
-fun ColorCloudDEMO(
+fun Demo3ColorClouds(
     colors: List<Color> = listOf(Color.Blue, Color.Yellow, Color.Red, Color.Magenta),
 ) {
     val displacement by rememberSweepAnim()
@@ -1701,7 +1703,7 @@ fun rememberGlobalAlphaAnim(
 
 //────[ Inner & Outer Shadow ]────────────────────────────────────────────────────────────
 @Composable
-fun InnerAndOuterShadowDEMO() {
+fun Demo4CustomShadows() {
     Box(
         Modifier
             .size(480.dp)
@@ -2074,7 +2076,7 @@ private fun buildStops(
     knee: Float = 0.66f,   // 22 % of the strip = slow zone
     lightA: Float = .02f,    // 0.02% opacity practically gone at top
     midA: Float = .90f,    // ~90 % opacity when we hit the knee
-    darkA: Float = .99f,    // 99 % at very bottom
+    darkA: Float = 1f,    // 100% at very bottom
 //    tailEase:  Easing = FastOutSlowInEasing
     tailEase: Easing = SlowOutFastInEasing // SlowOutFastInEasing (inverted)
 ): Array<Pair<Float, Color>> =

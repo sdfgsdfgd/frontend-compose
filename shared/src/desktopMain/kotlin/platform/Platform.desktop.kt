@@ -1,17 +1,25 @@
 package platform
 
+
+import androidx.compose.runtime.*
+import androidx.compose.ui.awt.ComposeWindow
+import kotlinx.coroutines.*
+import java.awt.event.ComponentEvent
+import java.awt.event.ComponentListener
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.ProvidableCompositionLocal
 import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.awt.ComposeWindow
 import androidx.compose.ui.awt.SwingPanel
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.Density
@@ -33,6 +41,9 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.merge
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import net.sdfgsdfg.resources.Res
@@ -109,7 +120,34 @@ actual fun Video(
         if (!autoPlay) mp.controls().pause()
     }
 
-    SwingPanel(factory = { comp }, modifier = modifier)
+    DisposableEffect(Unit) { onDispose { mp.release() } }
+
+    key("vlcj-video-interp") {
+        SwingPanel(
+            background = Color.Transparent,
+            factory = { comp },               // returns the remembered instance
+            update  = { /* no-op */ },
+            modifier = modifier
+        )
+    }
+}
+
+@OptIn(FlowPreview::class)
+@Composable
+fun rememberIsWindowMoving(state: WindowState, debounceMs: Long = 300): State<Boolean> {
+    val moving = remember { mutableStateOf(false) }
+
+    LaunchedEffect(state) {
+        merge(
+            snapshotFlow { state.position },        // emits as the OS moves the window
+            snapshotFlow { state.size }             // emits during live-resize
+        )
+            .onEach { moving.value = true }         // any change -> moving
+            .debounce(debounceMs)                   // quiet period -> stopped
+            .collect { moving.value = false }
+    }
+
+    return moving
 }
 
 /**
