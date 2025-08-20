@@ -42,8 +42,7 @@ fun MainScreen(
                     bottom.linkTo(parent.bottom)
                     start.linkTo(parent.start)
                     end.linkTo(parent.end)
-                }
-                    .fillMaxWidth()
+                }.fillMaxWidth()
                     .height(VIDEO_HEIGHT)
                     .videoVignette()
             ) {
@@ -61,10 +60,7 @@ fun MainScreen(
                             autoPlay = autoPlay
                         )
                     } else {
-                        Box(
-                            Modifier.fillMaxSize()
-                                .background(Color.Black)
-                        )
+                        Box(Modifier.fillMaxSize().background(Color.Black))
                     }
                 }
             }

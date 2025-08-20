@@ -88,7 +88,7 @@ fun LoginScreen(
         }
     }
 
-    Box(modifier.wrapContentSize(), contentAlignment = Alignment.TopCenter) { // Center) {
+    Box(modifier.wrapContentSize(), contentAlignment = Alignment.TopCenter) {
         when (authState) {
             is AuthState.Unauthenticated ->
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -108,10 +108,8 @@ fun LoginScreen(
                             busy = false
                         }
                     }
-
-                    // xx --------------[ DEMOS ]----------------------------------------------------------------------------------------------
-                    //
-                    // xx LiquidGlassDemo()    //  <->    [ WIP ]  ( Last milestone uses Call site of Desktop ? ) ( compose last steps not completed yet )
+// region --------------[ DEMOS ]----------------------------------------------------------------------------------------------
+// xx                 LiquidGlassDemo()    //  <->    [ WIP ]  ( Last milestone uses Call site of Desktop ? ) ( compose last steps not completed yet )
 //                    Demo1DynamicIsland()
 //                    Demo2DynamicIslandWLuxuryInput()
 //                    ButtonCustomShadow(
@@ -119,14 +117,13 @@ fun LoginScreen(
 //                        onClick = {},
 //                        modifier = Modifier
 //                            .padding(44.dp)
-////                            .zIndex(12f)
 //                            .fillMaxWidth()
 //                            .height(64.dp)
 //                            .background(Color.Transparent) // Color(0x010101).copy(alpha = 0.4f)),
 //                    )
 //                    Demo3ColorClouds()
 //                    Demo4CustomShadows()
-                    // xx --------------[ DEMOS ]----------------------------------------------------------------------------------------------
+// endregion --------------[ DEMOS ]----------------------------------------------------------------------------------------------
                 }
 
             is AuthState.Error -> TODO()
