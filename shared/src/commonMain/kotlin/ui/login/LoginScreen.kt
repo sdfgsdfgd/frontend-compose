@@ -1,7 +1,6 @@
 package ui.login
 
 import androidx.compose.animation.animateContentSize
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -50,15 +49,10 @@ import kotlinx.datetime.format.char
 import kotlinx.datetime.toLocalDateTime
 import platform.BrowserLauncher
 import platform.LocalPlatformContext
-import ui.ButtonCustomShadow
-import ui.Demo3ColorClouds
-import ui.Demo1DynamicIsland
 import ui.GlassCard
 import ui.GlassStyle
 import ui.GlassTopBar
 import ui.GoldUnicode
-import ui.Demo2DynamicIslandWLuxuryInput
-import ui.Demo4CustomShadows
 import ui.SkeuoButton
 import ui.SkeuoText
 import ui.login.model.AuthState
@@ -75,6 +69,8 @@ fun LoginScreen(
 
     val authState by AuthManager.state.collectAsState()
     var repos by remember { mutableStateOf<List<GithubRepoDTO>>(emptyList()) }
+
+    println("[ LoginScreen ] -------> authState: [ $authState ] ------- busy [ $busy ] ------ repos [ ${repos.size} ]")
 
     LaunchedEffect(Unit) { AuthManager.bootstrap() }
     LaunchedEffect(authState) {
@@ -117,7 +113,7 @@ fun LoginScreen(
                     //
                     // xx LiquidGlassDemo()    //  <->    [ WIP ]  ( Last milestone uses Call site of Desktop ? ) ( compose last steps not completed yet )
 //                    Demo1DynamicIsland()
-                    Demo2DynamicIslandWLuxuryInput()
+//                    Demo2DynamicIslandWLuxuryInput()
 //                    ButtonCustomShadow(
 //                        text = "sdfjgsjsdfsdfdfg",
 //                        onClick = {},

@@ -12,9 +12,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.zIndex
 import androidx.constraintlayout.compose.ConstraintLayout
 import androidx.constraintlayout.compose.Dimension
 import net.sdfgsdfg.resources.Res
@@ -23,6 +21,8 @@ import platform.Video
 import platform.WindowMetrics
 import ui.login.LoginScreen
 
+private val VIDEO_HEIGHT = 500.dp
+
 // TODO: window drags still cause flicker, only on window drag/autoResizes we suspend video composables, try it
 @Composable
 fun MainScreen(
@@ -30,12 +30,7 @@ fun MainScreen(
     autoPlay: Boolean = true,
     isWindowMoving: Boolean = false,
 ) {
-    val winHeightDp = (metrics.sizeDp.height.takeIf { it > 0.dp }
-        ?: LocalWindowInfo.current.containerSize.height.dp)
-
-    val videoHeight = 500.dp
-    val gapHeight = (winHeightDp - videoHeight).coerceAtLeast(0.dp)
-    println("[ kaankaan ] -------> gapHeight: [ $gapHeight ] ------- winHeightDp [ $winHeightDp ] ------ videoHeight [ $videoHeight ]")
+    println("-------------[ MainScreen ] -------------")
 
     MaterialTheme {
         ConstraintLayout(Modifier.fillMaxSize()) {
@@ -49,12 +44,11 @@ fun MainScreen(
                     end.linkTo(parent.end)
                 }
                     .fillMaxWidth()
-                    .height(videoHeight)
+                    .height(VIDEO_HEIGHT)
                     .videoVignette()
-                    .zIndex(1f)
             ) {
                 if (isWindowMoving) // dumb hack required to fix AWT flicker on window drag
-                    Box(Modifier.fillMaxSize().zIndex(2f).background(Color.Black))
+                    Box(Modifier.fillMaxSize().background(Color.Black))
                 Crossfade(
                     targetState = isWindowMoving,
                     animationSpec = tween(durationMillis = 990),
@@ -68,7 +62,7 @@ fun MainScreen(
                         )
                     } else {
                         Box(
-                            Modifier.fillMaxSize().zIndex(2f)
+                            Modifier.fillMaxSize()
                                 .background(Color.Black)
                         )
                     }
@@ -76,16 +70,13 @@ fun MainScreen(
             }
 
             // —————————————————  GradienT  ——————————————————————————
-            Box(
-                Modifier
-                    .constrainAs(gradient) {
-                        top.linkTo(parent.top)
-                        bottom.linkTo(video.top)
-                        start.linkTo(parent.start)
-                        end.linkTo(parent.end)
-                        height = Dimension.fillToConstraints
-                    }.zIndex(1f).fillMaxWidth().height(gapHeight)
-            ) {
+            Box(Modifier.constrainAs(gradient) {
+                top.linkTo(parent.top)
+                bottom.linkTo(video.top)
+                start.linkTo(parent.start)
+                end.linkTo(parent.end)
+                height = Dimension.fillToConstraints
+            }.fillMaxWidth()) {
                 FadeStrip(blurRadius = 24.dp)
             }
 
@@ -97,7 +88,7 @@ fun MainScreen(
                 end.linkTo(parent.end)
                 width = Dimension.fillToConstraints
                 height = Dimension.fillToConstraints
-            }.zIndex(2f)) {
+            }) {
                 LoginScreen(modifier = Modifier) {
                     println("onAuthenticated == [ ${it.user.name} ] ==")
                 }

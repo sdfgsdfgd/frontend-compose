@@ -7,6 +7,7 @@ import androidx.compose.animation.core.ArcAnimationSpec
 import androidx.compose.animation.core.Easing
 import androidx.compose.animation.core.ExperimentalAnimationSpecApi
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.Transition
@@ -25,6 +26,8 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.updateTransition
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.MutatePriority
+import androidx.compose.foundation.MutatorMutex
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -70,9 +73,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
+import androidx.compose.ui.draw.BlurredEdgeTreatment
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
@@ -119,11 +125,29 @@ import androidx.compose.ui.unit.lerp
 import androidx.compose.ui.unit.max
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.lerp
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.conflate
+import kotlinx.coroutines.flow.distinctUntilChangedBy
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.sample
 import kotlinx.coroutines.launch
 import kotlin.jvm.JvmInline
+import kotlin.math.abs
+import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.round
+import kotlin.math.roundToInt
+import kotlin.math.sign
 import kotlin.math.sqrt
 
 // region ───[ Helpers ]────────────────────────────────────────────────────────────
@@ -909,7 +933,7 @@ data class CaretSpec(
     val glowStrong: Color = Color(0xB80C0C05),
     val glowHighlight: Color = Color(0x4DF5B504),
     val widthDp: Float = 2f,
-    val blinkMillis: Int = 1266
+    val blinkMillis: Int = 1150
 )
 
 /**
@@ -966,7 +990,7 @@ fun LuxuryInput(
             label = "focusFade"
         ) { isFocused -> if (isFocused) 1f else 0f }
 
-    // Gate oscillators so we don’t churn offscreen.
+    // Gate oscillators so we don’t churn offscreen. todo: ??? huh? check necessity
     val runOsc = focusFade > 0.01f
     val osc = rememberInfiniteTransition(label = "osc")
     val blinkAlpha by if (runOsc) osc.animateFloat(
@@ -979,14 +1003,47 @@ fun LuxuryInput(
         )
     ) else rememberUpdatedState(1f)
 
+    // Glow Layer
     val glowProgress by if (runOsc) osc.animateFloat(
         initialValue = 0f, targetValue = 1f, label = "glowProgress",
         animationSpec = infiniteRepeatable(
-            animation = tween(900, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
+            animation = keyframes {
+                durationMillis = 2250
+                0f at 0         using FastOutSlowInEasing
+                1f at 400       using FastOutSlowInEasing
+                0.96f at 750    using LinearEasing
+                1f at 1050      using LinearEasing
+                0.98f at 1150   using LinearEasing
+                0f at 2250      using LinearEasing
+            },
+            repeatMode = RepeatMode.Restart
         )
     ) else rememberUpdatedState(0f)
 
+    /**
+     *  What we have so far:
+         Stable target: caretTarget: MutableState<Rect> decouples events from motion.   ✔️
+         Continuous tick: compute dtMs and adapt spring from remaining error speed. ✔️
+         Three Animatables (X, Y, H), relaunched every tick with animateTo              ⚠️ (cancels prior run each frame)
+         delay(16L) cadence.    ⚠️ (not vsync; can phase‑fight the renderer)
+         Snap on blur           ✔️
+         Focus‑agnostic loop (runs even when faded)  ⚠️ (wasteful, not fatal)
+     *
+     * Next upgrades (sorted):
+     * 1) Animatable(Offset) for XY atomicity
+     * 2) Hysteresis (0.25px XY, 0.5px H) + grid quantization
+     * 3) Spec smoothing for t (low-pass or bands)
+     * 4) Focus gating of the loop
+     * 5) Space-run bias (+0.1 to t)
+     * 6) Lag telemetry & first-target snap
+     * 7) Scroll-offset-aware caret draw (if needed)
+     */
+    // TODO-1: Atomicity purist: if you want literal atomic XYH updates, use Animatable(Offset) + Animatable(height)
+    //    with a TwoWayConverter so the solver is truly vectorized. Today’s visual sync is good, but this is bulletproof.
+    // TODO-2: Spec smoothing: recomputing stiffness/damping each tick can produce tiny parameter jitter.
+    //  Fix: low‑pass t (e.g., t = lerp(prevT, newT, 0.25f)), or quantize to a few bands.
+    // TODO-3: Adaptive floor for space‑hold. If last typed char is " ", bias your t upward by +0.10 so the chase feels a hair more assertive during runs of spaces (while normal typing stays calmer).
+    //
     // ---------- SPEED‑TUNED CARET MOTION ----------
     val d = LocalDensity.current
     val caretWidthPx = with(d) { caretSpec.widthDp.dp.toPx() }
@@ -997,59 +1054,70 @@ fun LuxuryInput(
     val caretY = remember { Animatable(0f) }
     val caretH = remember { Animatable(minCaretHeightPx) }
 
-    // Target rect derived from layout + selection
-    val targetRect: Rect? by remember(value.selection, layout, value.text) {
-        mutableStateOf(
-            layout?.let {
-                val i = value.selection.start.coerceIn(0, it.layoutInput.text.text.length)
-                runCatching { it.getCursorRect(i) }.getOrNull()
-            }
-        )
+    // Target rect derived from layout + selection (lighter)
+    val targetRect by remember(value.selection, layout) {
+        derivedStateOf {
+            val it = layout ?: return@derivedStateOf null
+            val i = value.selection.start.coerceIn(0, it.layoutInput.text.text.length)
+            runCatching { it.getCursorRect(i) }.getOrNull()
+        }
     }
 
-    // Track last move time to estimate "typing speed"
-    var lastMoveNanos by remember { mutableStateOf(TimeMark.nanoTime()) }
+    // Stable mutable caret target
+    val caretTarget = remember { mutableStateOf(Rect.Zero) }
 
-    // Animate to each new target
+    // Continuous animation loop
+    LaunchedEffect(Unit) {
+        var lastMoveNanos = TimeMark.nanoTime()
+
+        while (true) {
+            val now = TimeMark.nanoTime()
+            val dtMs = ((now - lastMoveNanos) / 1_000_000L).coerceAtLeast(1L)
+
+            val target = caretTarget.value
+
+            val dx = target.left - caretX.value
+            val dy = target.top - caretY.value
+            val dist = sqrt(dx * dx + dy * dy)
+            val pxPerMs = dist / dtMs.toFloat()
+
+            val t = (pxPerMs / 2.5f).coerceIn(0f, 1f)
+            val stiffness = lerp(220f, 1600f, t)
+            val damping = lerp(0.90f, 0.70f, t)
+
+            val spec = spring(
+                stiffness = stiffness,
+                dampingRatio = damping,
+                visibilityThreshold = 0.5f
+            )
+
+            val hSpec = spring(
+                stiffness = stiffness * 0.9f,
+                dampingRatio = damping,
+                visibilityThreshold = 0.5f
+            )
+
+            // Launch animations towards mutable target
+            launch { caretX.animateTo(target.left, animationSpec = spec) }
+            launch { caretY.animateTo(target.top, animationSpec = spec) }
+            launch { caretH.animateTo(max(target.height, minCaretHeightPx), animationSpec = hSpec) }
+
+            lastMoveNanos = now
+            delay(16L) // ~60fps smoothness; tweak as needed
+        }
+    }
+
+    // Lightweight target updates without breaking animations
     LaunchedEffect(targetRect, focusFade) {
         val r = targetRect ?: return@LaunchedEffect
 
-        // snap branch
         if (focusFade <= 0.01f) {
-            // not visible: snap to target, don't animate
             caretX.snapTo(r.left)
             caretY.snapTo(r.top)
             caretH.snapTo(max(r.height, minCaretHeightPx))
-            lastMoveNanos = TimeMark.nanoTime()
-            return@LaunchedEffect
         }
 
-        // timing
-        val now = TimeMark.nanoTime()
-        val dtMs = ((now - lastMoveNanos) / 1_000_000L).coerceAtLeast(1L)
-
-        val dx = r.left - caretX.value
-        val dy = r.top - caretY.value
-        val dist = sqrt(dx * dx + dy * dy)      // px
-        val pxPerMs = dist / dtMs.toFloat()     // "typing speed"
-
-        // Map speed → spring parameters.
-        // Slow moves = softer + more damping; fast moves = stiffer + a touch bouncy.
-        fun lerp(a: Float, b: Float, t: Float) = a + (b - a) * t
-        val t = (pxPerMs / 2.5f).coerceIn(0f, 1f) // 0..~2.5 px/ms
-        val stiffness = lerp(220f, 1600f, t)
-        val damping = lerp(0.90f, 0.70f, t)
-
-        val spec = spring(stiffness = stiffness, dampingRatio = damping, visibilityThreshold = 0.5f)
-
-        // Height lags a hair less than X/Y so the bar doesn't "squash" too long
-        val hSpec = spring(stiffness = stiffness * 0.9f, dampingRatio = damping, visibilityThreshold = 0.5f)
-
-        launch { caretX.animateTo(r.left, animationSpec = spec) }
-        launch { caretY.animateTo(r.top, animationSpec = spec) }
-        launch { caretH.animateTo(max(r.height, minCaretHeightPx), animationSpec = hSpec) }
-
-        lastMoveNanos = now
+        caretTarget.value = r
     }
     // ---------- END SPEED‑TUNED CARET MOTION ----------
 
@@ -1135,8 +1203,7 @@ fun LuxuryInput(
                         blendMode = BlendMode.Multiply,
                         alpha = env
                     )
-
-                    // Layer 3: micro horizontal bevel for readability over glyphs
+                    // Layer 3 – micro horizontal bevel
                     drawRect(
                         brush = Brush.horizontalGradient(
                             0f to Color.Black.copy(alpha = 0.28f),
@@ -1148,51 +1215,8 @@ fun LuxuryInput(
                         blendMode = BlendMode.Multiply,
                         alpha = 0.40f * env
                     )
-
-                    // Layer 4: triple breathing capsule glow (radial + two knees)
-                    fun lerp(a: Float, b: Float, t: Float) = a + (b - a) * t
-                    val e = FastOutSlowInEasing.transform(glowProgress.coerceIn(0f, 1f))
-                    val knee1 = lerp(0.18f, 0.30f, e)
-                    val knee2 = lerp(0.60f, 0.95f, e)
-                    val vScale = 1.15f
-
-                    fun drawGlowCapsule(
-                        basePad: Float, growPad: Float, color: Color, aCore: Float, aMid: Float
-                    ) {
-                        val pad = (basePad + growPad * e) * focusFade
-                        val w1 = caretWidthPx + pad * 2f
-                        val h1 = h + pad * 2f * vScale
-                        val r = min(w1, h1) / 2f
-                        val halfDiag = 0.5f * sqrt(w1 * w1 + h1 * h1)
-                        val gradR = halfDiag * 0.90f
-
-                        drawRoundRect(
-                            brush = Brush.radialGradient(
-                                colorStops = arrayOf(
-                                    0f to color.copy(alpha = aCore),
-                                    knee1 to color.copy(alpha = aMid),
-                                    knee2 to Color.Transparent
-                                ),
-                                center = Offset(left + caretWidthPx / 2f, top + h / 2f),
-                                radius = gradR
-                            ),
-                            topLeft = Offset(left - pad, top - pad * vScale),
-                            size = Size(w1, h1),
-                            cornerRadius = CornerRadius(r, r),
-                            blendMode = BlendMode.Plus,
-                            alpha = env
-                        )
-                    }
-
-                    drawGlowCapsule(2.dp.toPx(), 5.dp.toPx(), caretSpec.glowSoft, 0.32f, 0.20f)
-                    drawGlowCapsule(6.dp.toPx(), 10.dp.toPx(), caretSpec.glowStrong, 0.26f, 0.14f)
-                    if (glowProgress > 0.85f) {
-                        val k = ((glowProgress - 0.85f) / 0.15f).coerceIn(0f, 1f)
-                        drawGlowCapsule(9.dp.toPx(), 9.dp.toPx() * k, caretSpec.glowHighlight, 0.32f * k, 0.12f * k)
-                    }
-                    // ---------- end Capsule Glow ----------
+                    // (No glow here)
                 },
-            // Placeholder
             decorationBox = { inner ->
                 Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterStart) {
                     if (value.text.isEmpty()) {
@@ -1207,6 +1231,102 @@ fun LuxuryInput(
                 }
             }
         )
+
+        // GLOW OVERLAY — isolated + blur (no clipRect)
+        Canvas(
+            Modifier
+                .matchParentSize()
+                .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                .blur(radius = 3.25.dp, edgeTreatment = BlurredEdgeTreatment.Unbounded) // keep 3.25–4.25.dp as you prefer
+        ) {
+            // α drive = blink * focus (matches original pulse)
+            val env = (blinkAlpha * focusFade).coerceIn(0f, 1f)
+            if (env <= 0.01f) return@Canvas
+
+            fun lerp(a: Float, b: Float, t: Float) = a + (b - a) * t
+            fun tint(c: Color, r: Float, g: Float, b: Float) = Color(
+                red     = (c.red * r).coerceIn(0f, 1f),
+                green   = (c.green * g).coerceIn(0f, 1f),
+                blue    = (c.blue * b).coerceIn(0f, 1f),
+                alpha   = c.alpha
+            )
+
+            val eRaw = glowProgress.coerceIn(0f, 1f)
+            val e = FastOutSlowInEasing.transform(eRaw)
+
+            // knees like original
+            val knee1 = lerp(0.18f, 0.30f, e)
+            val knee2 = lerp(0.60f, 0.95f, e)
+            val vScale = 1.15f
+
+            // original late-gate for highlight (wobble cadence)
+            val k = ((eRaw - 0.85f) / 0.15f).coerceIn(0f, 1f)
+
+            val left    = caretX.value   // unsnapped = liquid motion
+            val top     = caretY.value
+            val h       = caretH.value
+
+            // tiny seam feather to cross-fade layers without changing timing
+            val FEATHER = 0.035f
+            fun stopsFeathered(color: Color, aCore: Float, aMid: Float, amp: Float) = arrayOf(
+                0f      to color.copy(alpha = aCore * amp),
+                knee1   to color.copy(alpha = aMid * amp),
+                (knee2 - FEATHER).coerceIn(0f, 1f) to color.copy(alpha = (aMid * 0.08f) * amp),
+                knee2   to Color.Transparent
+            )
+
+            fun drawGlowCapsule(
+                basePad: Float, growPad: Float, color: Color,
+                aCore: Float, aMid: Float, amp: Float,
+                dx: Float = 0f, dy: Float = 0f, vS: Float = vScale
+            ) {
+                val pad = (basePad + growPad * e) * focusFade
+                val w1 = caretWidthPx + pad * 2f
+                val h1 = h + pad * 2f * vS
+                val r = min(w1, h1) / 2f
+                val gradR = 0.5f * sqrt(w1 * w1 + h1 * h1) * 0.90f
+
+                drawRoundRect(
+                    brush = Brush.radialGradient(
+                        colorStops = stopsFeathered(color, aCore, aMid, amp),
+                        center = Offset(left + caretWidthPx / 2f + dx, top + h / 2f + dy),
+                        radius = gradR
+                    ),
+                    topLeft = Offset(left - pad + dx, top - pad * vS + dy),
+                    size = Size(w1, h1),
+                    cornerRadius = CornerRadius(r, r),
+                    blendMode = BlendMode.Plus // keep additive glow character
+                )
+            }
+
+            // Inner two — same pads (preserve wobble), α = env
+            drawGlowCapsule(2.dp.toPx(), 5.dp.toPx(), caretSpec.glowSoft, 0.32f, 0.20f, env)
+            drawGlowCapsule(6.dp.toPx(), 10.dp.toPx(), caretSpec.glowStrong, 0.26f, 0.14f, env)
+
+            // === Upgrades for the outer highlight ===
+            if (eRaw > 0.85f) {
+                // 1) Stronger crest (amplitude + a touch bigger near crest)
+                val crestAmp = lerp(1f, 1.90f, FastOutSlowInEasing.transform(k)) // up to +90% α
+                val crestGrow = lerp(1f, 2.20f, FastOutSlowInEasing.transform(k)) // up to +120% radius
+                drawGlowCapsule(
+                    basePad = 9.dp.toPx(),
+                    growPad = 9.dp.toPx() * k * crestGrow,
+                    color = caretSpec.glowHighlight,
+                    aCore = 0.32f * k * crestAmp,
+                    aMid = 0.12f * k * crestAmp,
+                    amp = env,
+                    vS = vScale + 0.06f * FastOutSlowInEasing.transform(k) // subtle vertical anisotropy
+                )
+
+                // 2) Subtle chromatic fringe at the crest (lens realism)
+                val fAlpha = 0.07f * env * k                            // very low α; just a hint
+                val fOff = with(d) { (0.6f * k).dp.toPx() }           // px offset grows at crest
+                val cR = tint(caretSpec.glowHighlight, 1.20f, 0.97f, 0.92f) // warm/red bias
+                val cB = tint(caretSpec.glowHighlight, 0.92f, 0.97f, 1.20f) // cool/blue bias
+                drawGlowCapsule(9.dp.toPx(), 9.dp.toPx() * k, cR, 0.14f * k, 0.06f * k, fAlpha, dx = +fOff)
+                drawGlowCapsule(9.dp.toPx(), 9.dp.toPx() * k, cB, 0.14f * k, 0.06f * k, fAlpha, dx = -fOff)
+            }
+        }
 
         // Layer 5 (offscreen): inner-shadow stack for bevel + colored rim + tip falloff
         if (focusFade > 0.01f) {
