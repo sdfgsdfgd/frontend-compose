@@ -6,12 +6,6 @@ import data.model.GithubEmail
 import data.model.GithubUser
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
-import io.ktor.client.engine.cio.CIO
-import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
-import io.ktor.client.plugins.logging.LogLevel
-import io.ktor.client.plugins.logging.Logger
-import io.ktor.client.plugins.logging.Logging
-import io.ktor.client.plugins.logging.SIMPLE
 import io.ktor.client.request.accept
 import io.ktor.client.request.forms.FormDataContent
 import io.ktor.client.request.get
@@ -23,29 +17,16 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.Parameters
 import io.ktor.http.URLBuilder
 import io.ktor.http.Url
-import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.flow.first
-import kotlinx.serialization.json.Json
 import platform.DeepLinkHandler
 import platform.PKCE
 import platform.REDIRECT
 import platform.STATE_PREFIX
 import ui.login.model.AuthState
 
-object GithubOAuth {
-    private const val CLIENT_ID = "Ov23libLAx2DZVS5FeM4"
-    private const val CLIENT_SECRET = "1b28eb97612c885f785558b82cf92ab033480af4"
-
-    // xx 2nd client because we want custom client w/ oauth headers only for Github related flows
-    private val http = HttpClient(CIO) {
-        install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
-        expectSuccess = true
-
-        install(Logging) {
-            logger = Logger.SIMPLE
-            level = LogLevel.ALL
-        }
-    }
+class GithubOAuth(private val http: HttpClient) {
+    private val CLIENT_ID = "Ov23libLAx2DZVS5FeM4"
+    private val CLIENT_SECRET = "1b28eb97612c885f785558b82cf92ab033480af4"
 
     fun buildAuthRequest(): AuthRequest {
         val pkce = PKCE.new()

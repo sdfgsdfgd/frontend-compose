@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.stringPreferencesKey
 import data.model.AccessToken
 import data.model.GithubEmail
+import data.model.GithubRepoDTO
 import data.model.GithubUser
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -40,10 +41,11 @@ object DataStore {
     )
 
     /* ── keys ─────────────────────────────────────────────────────── */
-    private val TOKEN  = stringPreferencesKey("gh.token")
-    private val SCOPES = stringPreferencesKey("gh.scopes")
-    private val USER   = stringPreferencesKey("gh.user")
-    private val EMAILS = stringPreferencesKey("gh.emails")
+    private val TOKEN   = stringPreferencesKey("gh.token")
+    private val SCOPES  = stringPreferencesKey("gh.scopes")
+    private val USER    = stringPreferencesKey("gh.user")
+    private val EMAILS  = stringPreferencesKey("gh.emails")
+    private val REPOS   = stringPreferencesKey("gh.repos")
 
     /* ── save ─────────────────────────────────────────────────────── */
     suspend fun save(token: AccessToken, user: GithubUser, emails: List<GithubEmail>) {
@@ -57,6 +59,15 @@ object DataStore {
         }
     }
 
+    // xx Unnecessary, but keep as example of a more complex object caching w/ DataStore
+    suspend fun saveRepos(repos: List<GithubRepoDTO>) {
+        store.updateData { prefs ->
+            prefs.toMutablePreferences().apply {
+                this[REPOS] = Json.encodeToString(repos)
+            }
+        }
+    }
+
     /* ── load ─────────────────────────────────────────────────────── */
     suspend fun load(): CachedSession? = store.data.map { p ->
         val tok = p[TOKEN]  ?: return@map null
@@ -66,6 +77,13 @@ object DataStore {
 
         CachedSession(tok, scp, usr, eml)
     }.firstOrNull()
+
+    // xx Unnecessary, but example of DataStore load
+    suspend fun loadRepos(): List<GithubRepoDTO> =
+        store.data.map { prefs ->
+            prefs[REPOS]?.let { Json.decodeFromString<List<GithubRepoDTO>>(it) }
+        }.firstOrNull() ?: emptyList()
+
 
     /* ── clear ────────────────────────────────────────────────────── */
     fun clear() = scope.launch { store.updateData { emptyPreferences() } }

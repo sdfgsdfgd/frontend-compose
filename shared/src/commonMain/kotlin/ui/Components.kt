@@ -152,6 +152,7 @@ import kotlin.math.sqrt
 
 // region ───[ Helpers ]────────────────────────────────────────────────────────────
 const val GoldUnicode = "\u001B[38;5;214m"
+const val Reset = "\u001B[0m"
 // val Gold = Color(0xFFFFAF00)
 
 /* tiny color helpers */

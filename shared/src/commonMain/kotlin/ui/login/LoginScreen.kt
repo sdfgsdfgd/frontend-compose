@@ -1,6 +1,7 @@
 package ui.login
 
 import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -33,10 +34,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.constraintlayout.compose.ConstraintLayout
-import data.GithubApi
 import data.model.GithubRepoDTO
 import data.model.GithubUser
-import domain.AuthManager
+import di.DI
+import di.LocalDI
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.datetime.Clock
@@ -60,33 +61,35 @@ import ui.login.model.AuthState
 @Composable
 fun LoginScreen(
     modifier: Modifier = Modifier,
-    onAuthed: (AuthState.Authenticated) -> Unit = {}
+    di: DI = LocalDI.current,
+    onAuthed: (AuthState.Authenticated) -> Unit = {},
 ) {
     val ctx = LocalPlatformContext.current
-
     val scope = rememberCoroutineScope()
     var busy by remember { mutableStateOf(false) }
+    val authState by di.gitRepository.state.collectAsState()
+    val repos by produceState(initialValue = emptyList<GithubRepoDTO>(), authState) {
+        val successState = authState as? AuthState.Authenticated
 
-    val authState by AuthManager.state.collectAsState()
-    var repos by remember { mutableStateOf<List<GithubRepoDTO>>(emptyList()) }
+        value = successState
+            ?.takeIf { it.token.scope.contains("repo") }
+            ?.let {
+                di.githubApiClient.listUserRepos().also { fetchedRepos ->
+                    println("${GoldUnicode}----------- Fetched ${fetchedRepos.size} repos for user ${it.user.name}\u001B[0m ---")
 
-    println("[ LoginScreen ] -------> authState: [ $authState ] ------- busy [ $busy ] ------ repos [ ${repos.size} ]")
-
-    LaunchedEffect(Unit) { AuthManager.bootstrap() }
-    LaunchedEffect(authState) {
-        println("LoginScreen authState -> $authState")
-        val successState = (authState as? AuthState.Authenticated)
-
-        if (successState?.token?.scope?.contains("repo") == true) {
-            repos = GithubApi.listUserRepos().also {
-                println("${GoldUnicode}----------- Fetched ${it.size} repos for user ${successState.user.name}\u001B[0m ---")
-
-                it.forEachIndexed { i, repo ->
-                    println("Repo #$i: ${repo.name} (${repo.id})")
+                    fetchedRepos.forEachIndexed { i, repo ->
+                        println("Repo #$i: ${repo.name} (${repo.id})")
+                    }
                 }
-            }
-        }
+            } ?: emptyList()
     }
+
+    //
+    println("----------[ LoginScreen ]---------              authState: [ $authState ]                          busy [ $busy ]                   repos [ ${repos.size} ]")
+    //
+    LaunchedEffect(Unit) { di.gitRepository.bootstrap() }
+    //
+
 
     Box(modifier.wrapContentSize(), contentAlignment = Alignment.TopCenter) {
         when (authState) {
@@ -94,7 +97,7 @@ fun LoginScreen(
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     SkeuoButton(
                         text = "Login with GitHub",
-                        textColor = Color.White.copy(alpha = 0.4f), // Color(0xFF191192), // .copy(alpha = 0.6f), // Color(0x33FFFFFF), // .copy(alpha = .65f),
+                        textColor = Color.White.copy(alpha = 0.4f), // Color(0xFF191192), // .copy(alpha = 0.6f), // Color(0x33FFFFFF),
                         modifier = Modifier.padding(12.dp).zIndex(12f),
                         cornerRadius = 58.dp,
                         baseTint = Color(0x010101).copy(alpha = 0.4f),
@@ -103,7 +106,7 @@ fun LoginScreen(
                         scope.launch {
                             busy = true // TODO: add loader & anims for state changes
 
-                            AuthManager.login { url -> BrowserLauncher.open(url, ctx) }
+                            di.gitRepository.login { url -> BrowserLauncher.open(url, ctx) }
 
                             busy = false
                         }
@@ -149,29 +152,29 @@ private fun AuthenticatedPane(
     ConstraintLayout {
         val (topBar, body) = createRefs()
 
-        Box(Modifier.fillMaxWidth().constrainAs(topBar) {
-            top.linkTo(parent.top)
-            start.linkTo(parent.start)
-            end.linkTo(parent.end)
-        }) {
-            GlassTopBar(
-                84.dp, style = GlassStyle().copy(
-                    bodyTint = Color.Black,
-                    bodyFadeStart = 0.56f, bodyFadeMid = 0.76f,
-                    bloomAlpha = 0.55f, bloomRadiusScale = 4.2f,
-                    specularAlpha = 0.72f, specularTail = 0.01f,
-                    innerRimColor = Color.Yellow, rimGap = 1.2.dp,
-                    alpha1 = 0.8f, alpha2 = 0.8f, alpha3 = 0.9f, alpha4 = 0.85f,
-                    radius = 32.dp, cornerRadius = 26.dp, rimStroke = 2.8.dp, rimBaseAlpha = 0.04f, rimGlowDelta = 0.06f,
-                )
-            ) {
-                Column(verticalArrangement = Arrangement.Center) {
-                    Spacer(modifier = Modifier.height(32.dp))
+        GlassTopBar(
+            modifier = Modifier.background(Color.Yellow).fillMaxWidth().constrainAs(topBar) {
+                top.linkTo(parent.top)
+                start.linkTo(parent.start)
+                end.linkTo(parent.end)
+            },
+            height = 84.dp,
+            style = GlassStyle().copy(
+                bodyTint = Color.Black,
+                bodyFadeStart = 0.56f, bodyFadeMid = 0.76f,
+                bloomAlpha = 0.55f, bloomRadiusScale = 4.2f,
+                specularAlpha = 0.72f, specularTail = 0.01f,
+                innerRimColor = Color.Yellow, rimGap = 1.2.dp,
+                alpha1 = 0.8f, alpha2 = 0.8f, alpha3 = 0.9f, alpha4 = 0.85f,
+                radius = 32.dp, cornerRadius = 26.dp, rimStroke = 2.8.dp, rimBaseAlpha = 0.04f, rimGlowDelta = 0.06f,
+            ),
+        ) {
+            Column(verticalArrangement = Arrangement.Center) {
+                Spacer(modifier = Modifier.height(32.dp))
 
-                    SkeuoText(text = "some other content toooooo", fontSize = 34.sp, textColor = Color.DarkGray/*, modifier = Modifier.align(Alignment.Center)*/)
+                SkeuoText(text = "some other content toooooo", fontSize = 34.sp, textColor = Color.DarkGray/*, modifier = Modifier.align(Alignment.Center)*/)
 
-                    Spacer(modifier = Modifier.height(8.dp))
-                }
+                Spacer(modifier = Modifier.height(8.dp))
             }
         }
 
@@ -179,8 +182,7 @@ private fun AuthenticatedPane(
             top.linkTo(topBar.bottom)
             start.linkTo(parent.start, margin = 12.dp)
             end.linkTo(parent.end, margin = 12.dp)
-        }
-        ) {
+        }) {
             LazyColumn(
                 modifier = Modifier
                     .widthIn(max = 620.dp)

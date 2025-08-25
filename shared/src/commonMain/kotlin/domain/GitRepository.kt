@@ -9,14 +9,17 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import ui.login.model.AuthState
 
-object AuthManager {
+class GitRepository(
+    private val dataStore: DataStore,
+    private val oauth: GithubOAuth,
+) {
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
 
     private val _state = MutableStateFlow<AuthState>(AuthState.Unauthenticated)
     val state: StateFlow<AuthState> = _state
 
     fun bootstrap() = scope.launch {
-        DataStore.load()?.let { cache ->
+        dataStore.load()?.let { cache ->
             println("---------------------------------\n\nAuto-login as ${cache.user.name} – token cached, ${cache.emails.size} emails \n")
             println("---[ Scope:  ${cache.scope} ]---\n\n---------------------------------")
 
@@ -29,14 +32,14 @@ object AuthManager {
     }
 
     suspend fun login(onAuthUrl: (String) -> Unit) {
-        val req = GithubOAuth.buildAuthRequest()
+        val req = oauth.buildAuthRequest()
 
         onAuthUrl(req.url)
 
-        when (val res = GithubOAuth.awaitToken(req)) {
+        when (val res = oauth.awaitToken(req)) {
             is AuthState.Error -> _state.value = AuthState.Error(res.cause)
             is AuthState.Authenticated -> {
-                DataStore.save(res.token, res.user, res.emails)
+                dataStore.save(res.token, res.user, res.emails)
                 _state.value = AuthState.Authenticated(res.token, res.user, res.emails)
             }
 
@@ -45,7 +48,7 @@ object AuthManager {
     }
 
     fun logout() = scope.launch {
-        DataStore.clear()
+        dataStore.clear()
         _state.value = AuthState.Unauthenticated
     }
 }

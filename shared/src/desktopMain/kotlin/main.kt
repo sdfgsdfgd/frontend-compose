@@ -16,6 +16,8 @@ import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
+import di.DI
+import di.LocalDI
 import platform.GlobalHotKey
 import platform.LocalPlatformContext
 import platform.LocalWindowMetrics
@@ -78,6 +80,7 @@ fun main() = application {
         CompositionLocalProvider(
             LocalPlatformContext provides PlatformContext(),
             LocalWindowMetrics provides rememberWindowMetrics(),
+            LocalDI provides DI,
         ) {
             WindowDraggableArea(
                 Modifier.fillMaxWidth()
