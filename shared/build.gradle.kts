@@ -23,7 +23,7 @@ kotlin {
 
     androidTarget()
     jvm("desktop")  // ⇐ generate :shared:run & :shared:desktop* tasks
-    iosX64(); iosArm64(); iosSimulatorArm64()
+//    iosX64(); iosArm64(); iosSimulatorArm64()
 
     sourceSets {
         val commonMain by getting {
@@ -83,13 +83,13 @@ kotlin {
             }
         }
 
-        val iosMain by getting {
-            dependencies {
-                implementation(compose.runtime)
-                implementation(libs.interop)
-                implementation(libs.ktor.client.darwin)
-            }
-        }
+//        val iosMain by getting {
+//            dependencies {
+//                implementation(compose.runtime)
+//                implementation(libs.interop)
+//                implementation(libs.ktor.client.darwin)
+//            }
+//        }
     }
 
     compilerOptions { // help suppress unnecessary beta warnings on expect/actual s
