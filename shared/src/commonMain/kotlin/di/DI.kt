@@ -5,8 +5,9 @@ import data.GithubApi
 import data.GithubClient
 import data.StandardClient
 import domain.DataStore
-import domain.GitRepository
-import domain.GithubOAuth
+import domain.git.GitRepository
+import domain.git.GithubOAuth
+import ui.login.WsClient
 
 // --------[ Dependency Injection ]-------- //
 val LocalDI = compositionLocalOf { DI }
@@ -33,5 +34,6 @@ object DI {
         dataStore = dataStore,
         oauth = githubOAuth
     )
-}
 
+    val websocketClient = WsClient()
+}

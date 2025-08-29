@@ -32,6 +32,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -61,6 +62,8 @@ import androidx.compose.material.Icon
 import androidx.compose.material.Text
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Face
+import androidx.compose.material.ripple
+import androidx.compose.material.ripple.rememberRipple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
@@ -2090,6 +2093,8 @@ fun GlassCard(
     onClick: () -> Unit = {},
     content: @Composable BoxScope.() -> Unit
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+
     val prog by animateFloatAsState(
         if (selected) 1f else 0f,
         spring(.55f, 80f), label = "glassProgress"
@@ -2097,8 +2102,14 @@ fun GlassCard(
     Box(
         modifier
             .glass(progress = prog, style = style)
-            .clickable(onClick = onClick)
-            .then(modifier)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = ripple(
+                    color = Color.Blue.copy(alpha = 0.6f),
+                    bounded = false,
+                ),
+                onClick = onClick
+            ).then(modifier)
     ) {
         Box(
             Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 10.dp),
@@ -2131,8 +2142,7 @@ fun GlassTopBar(
                 }) {
                     painter(progress, style)                       // background glass
                 }
-            }
-            .then(modifier),
+            }.then(modifier),
         contentAlignment = Alignment.Center,
         content = content
     )

@@ -12,14 +12,18 @@ import io.ktor.client.plugins.logging.LogLevel
 import io.ktor.client.plugins.logging.Logger
 import io.ktor.client.plugins.logging.Logging
 import io.ktor.client.plugins.logging.SIMPLE
+import io.ktor.client.plugins.websocket.WebSockets
+import io.ktor.client.plugins.websocket.pingInterval
 import io.ktor.client.request.header
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
+import io.ktor.serialization.kotlinx.KotlinxWebsocketSerializationConverter
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.json.Json
 import ui.login.model.AuthState
+import kotlin.time.Duration.Companion.seconds
 
-// region Client 1 - Primarily for use with Github API (with auth handling)
+// -------------[ Client 1 - Primarily for use with Github API (with auth handling) ]---------------------
 object GithubClient {
     val http: HttpClient = HttpClient(CIO) {
         install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
@@ -52,12 +56,26 @@ private val AuthHeader = createClientPlugin("AuthHeader") {
             ?.let { request.headers.append(HttpHeaders.Authorization, "Bearer $it") }
     }
 }
-// endregion
 
-// region Client 2 - For general use (no auth handling)
+//                          -----------------------------------------------
+//               ---------------------------------------------------------------------
+//      -----------------------------[ Client 2 - GeneraL ]----------------------------------
+//               ---------------------------------------------------------------------
+//                          -----------------------------------------------
 object StandardClient {
+    val J = Json {
+        ignoreUnknownKeys = true
+        explicitNulls = false
+        encodeDefaults = false
+    }
+
     val http = HttpClient(CIO) {
-        install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
+        install(ContentNegotiation) { json(J) }
+        install(WebSockets) {
+            contentConverter = KotlinxWebsocketSerializationConverter(Json)
+            pingInterval = 10.seconds           // custom conn ctrl
+            // maxFrameSize = 4L * 1024 * 1024  // optional safety net
+        }
         expectSuccess = true
         install(Logging) {
             logger = Logger.SIMPLE
@@ -65,4 +83,3 @@ object StandardClient {
         }
     }
 }
-// endregion

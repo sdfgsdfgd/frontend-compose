@@ -82,10 +82,11 @@ fun MainScreen(
                 bottom.linkTo(parent.bottom)
                 start.linkTo(parent.start)
                 end.linkTo(parent.end)
+
                 width = Dimension.fillToConstraints
                 height = Dimension.fillToConstraints
             }) {
-                LoginScreen(modifier = Modifier) {
+                LoginScreen {
                     println("onAuthenticated == [ ${it.user.name} ] ==")
                 }
             }

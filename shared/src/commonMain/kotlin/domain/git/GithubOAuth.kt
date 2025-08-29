@@ -1,4 +1,4 @@
-package domain
+package domain.git
 
 import data.model.AccessToken
 import data.model.AuthRequest
