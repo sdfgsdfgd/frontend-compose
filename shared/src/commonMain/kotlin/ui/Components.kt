@@ -26,8 +26,6 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.updateTransition
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.MutatePriority
-import androidx.compose.foundation.MutatorMutex
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -63,7 +61,6 @@ import androidx.compose.material.Text
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Face
 import androidx.compose.material.ripple
-import androidx.compose.material.ripple.rememberRipple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
@@ -76,8 +73,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
@@ -128,29 +123,12 @@ import androidx.compose.ui.unit.lerp
 import androidx.compose.ui.unit.max
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.lerp
-import kotlinx.coroutines.FlowPreview
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.channels.BufferOverflow
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.flow.conflate
-import kotlinx.coroutines.flow.distinctUntilChangedBy
-import kotlinx.coroutines.flow.filter
-import kotlinx.coroutines.flow.filterNotNull
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.onEach
-import kotlinx.coroutines.flow.sample
 import kotlinx.coroutines.launch
-import kotlin.jvm.JvmInline
-import kotlin.math.abs
-import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.round
 import kotlin.math.roundToInt
-import kotlin.math.sign
 import kotlin.math.sqrt
 
 // region ───[ Helpers ]────────────────────────────────────────────────────────────
@@ -2085,6 +2063,27 @@ fun Modifier.glass(
     }
 }
 
+
+
+
+
+
+fun Modifier.reserveScaleBleed(maxScale: Float): Modifier =
+    layout { measurable, constraints ->
+        val p = measurable.measure(constraints)
+        val dx = (((maxScale - 1f) * p.width) / 2f).roundToInt().coerceAtLeast(0)
+        val dy = (((maxScale - 1f) * p.height) / 2f).roundToInt().coerceAtLeast(0)
+        layout(p.width + dx * 2, p.height + dy * 2) {
+            p.placeRelative(dx, dy)
+        }
+    }
+
+
+
+
+
+
+
 @Composable
 fun GlassCard(
     selected: Boolean,
@@ -2099,9 +2098,50 @@ fun GlassCard(
         if (selected) 1f else 0f,
         spring(.55f, 80f), label = "glassProgress"
     )
+
+    // Unified breathing animation for selected cards
+    val breathingProgress by if (selected) {
+        rememberInfiniteTransition(label = "breathing").animateFloat(
+            initialValue = 0f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(2500, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "breathingProgress"
+        )
+    } else {
+        rememberUpdatedState(0f)
+    }
+
+    val breathingScale = 1f + breathingProgress * 0.02f
+    val shadowOffset = breathingProgress * 2f
+
+    val cardShape = RoundedCornerShape(style.radius)
+
     Box(
         modifier
+            .padding(horizontal = 24.dp, vertical = 4.dp)
+//            .reserveScaleBleed(1.02f)
             .glass(progress = prog, style = style)
+            .graphicsLayer {
+                scaleX = breathingScale
+                scaleY = breathingScale
+                clip = false
+                compositingStrategy = CompositingStrategy.Offscreen
+            }
+            .then(
+                if (selected) {
+                    Modifier.innerShadow(cardShape) {
+                        radius = 8f
+                        spread = 2f
+                        color = Color.Green
+                        alpha = 2.25f
+                        blendMode = BlendMode.SrcOver
+                        offset = Offset(0f, shadowOffset)
+                    }
+                } else Modifier
+            )
             .clickable(
                 interactionSource = interactionSource,
                 indication = ripple(
@@ -2109,7 +2149,7 @@ fun GlassCard(
                     bounded = false,
                 ),
                 onClick = onClick
-            ).then(modifier)
+            )
     ) {
         Box(
             Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 10.dp),
@@ -2118,6 +2158,41 @@ fun GlassCard(
         )
     }
 }
+
+
+//@Composable                ORIGINAL VERSION
+//fun GlassCard(
+//    selected: Boolean,
+//    modifier: Modifier = Modifier,
+//    style: GlassStyle = GlassStyle(),
+//    onClick: () -> Unit = {},
+//    content: @Composable BoxScope.() -> Unit
+//) {
+//    val interactionSource = remember { MutableInteractionSource() }
+//
+//    val prog by animateFloatAsState(
+//        if (selected) 1f else 0f,
+//        spring(.55f, 80f), label = "glassProgress"
+//    )
+//    Box(
+//        modifier
+//            .glass(progress = prog, style = style)
+//            .clickable(
+//                interactionSource = interactionSource,
+//                indication = ripple(
+//                    color = Color.Blue.copy(alpha = 0.6f),
+//                    bounded = false,
+//                ),
+//                onClick = onClick
+//            ).then(modifier)
+//    ) {
+//        Box(
+//            Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 10.dp),
+//            contentAlignment = Alignment.Center,
+//            content = content
+//        )
+//    }
+//}
 
 @Composable
 fun GlassTopBar(

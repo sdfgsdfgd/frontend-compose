@@ -1,8 +1,11 @@
 package ui.login
 
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,6 +19,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
@@ -27,11 +31,20 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -42,7 +55,10 @@ import data.model.GithubRepoDTO
 import data.model.GithubUser
 import di.DI
 import di.LocalDI
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.datetime.Clock
 import kotlinx.datetime.Instant
@@ -63,6 +79,7 @@ import ui.IslandState
 import ui.SkeuoButton
 import ui.SkeuoText
 import ui.login.model.AuthState
+import kotlin.math.abs
 
 @Composable
 fun LoginScreen(
@@ -89,11 +106,8 @@ fun LoginScreen(
             } ?: emptyList()
     }
 
-    //
-    println("----------[ LoginScreen ]---------              authState: [ $authState ]                          busy [ $busy ]                   repos [ ${repos.size} ]")
-    //
     LaunchedEffect(Unit) { di.gitRepository.bootstrap() }
-    //
+    println("----------[ LoginScreen ]---------              authState: [ $authState ]                          busy [ $busy ]                   repos [ ${repos.size} ]")
 
     when (authState) {
         is AuthState.Authenticated -> AuthenticatedPane(
@@ -103,6 +117,8 @@ fun LoginScreen(
         )
 
         is AuthState.Unauthenticated ->
+            // TODO-1: Extract to an UnauthenticatedPane()
+            // TODO-2: animated transitions between states, crossfade or other anims/easings, maybe even Runtimeshader
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 SkeuoButton(
                     text = "Login with GitHub",
@@ -148,25 +164,21 @@ private fun AuthenticatedPane(
     repos: List<GithubRepoDTO>,
     onAuthed: (AuthState.Authenticated) -> Unit
 ) {
-    LaunchedEffect(auth) { onAuthed(auth) }
+    // <-- INPUT -->
+    var query by rememberSaveable(stateSaver = TextFieldValue.Saver) { mutableStateOf(TextFieldValue("")) }
 
-    // Single source of truth for the search box
-    var query by rememberSaveable(stateSaver = TextFieldValue.Saver) {
-        mutableStateOf(TextFieldValue(""))
-    }
-    var islandState by rememberSaveable { mutableStateOf<IslandState>(IslandState.Split) }
-
-    // Canonical source list
-    val ordered = remember(repos) { repos.sortedByDescending { Instant.parse(it.updatedAt) } }
+    var islandState by rememberSaveable { mutableStateOf<IslandState>(IslandState.Default) }
+    val listState = rememberLazyListState() // for scrolling control
+    val focusRequester = remember { FocusRequester() }
+    val ordered = remember(repos) { repos.sortedByDescending { Instant.parse(it.updatedAt) } } // Repos sorted by updatedAt descending
 
     // todo: make sure deep-diff works with repo commits, and this triggers with `repos` updates
     // Minimal fuzzy: tokens must each match index OR be contained OR be a subsequence
     val filtered: List<IndexedValue<GithubRepoDTO>> by remember(ordered, query.text) {
         derivedStateOf {
-            val tokens = query.text.trim().lowercase()
-                .split(Regex("\\s+")).filter { it.isNotEmpty() }
-
-            if (tokens.isEmpty()) ordered.withIndex().toList()
+            val tokens = query.text.trim().lowercase().split(Regex("\\s+")).filter { it.isNotEmpty() }
+            if (tokens.isEmpty())
+                ordered.withIndex().toList()
             else ordered.withIndex().filter { (i, r) ->
                 val hay = buildString {
                     append(r.name); append(' ')
@@ -182,7 +194,116 @@ private fun AuthenticatedPane(
         }
     }
 
-    ConstraintLayout(Modifier.fillMaxSize()) {
+    val onAuthedState by rememberUpdatedState(onAuthed)
+    LaunchedEffect(Unit) {
+        onAuthedState(auth)
+        focusRequester.requestFocus() // Auto-focis
+    }
+
+    // Keyboard navigation and selection state per query persistence
+    val selectionMap = remember { mutableMapOf<Int, String>() }
+    val queryQueue = remember { ArrayDeque<Int>() }
+    val queryHash = query.text.hashCode()
+
+    var selectedKey by remember(queryHash, filtered) {
+        mutableStateOf(
+            selectionMap[queryHash]?.takeIf { savedKey ->
+                filtered.any { repoKey(it.value) == savedKey }
+            } ?: filtered.firstOrNull()?.let { repoKey(it.value) }.orEmpty()
+        )
+    }
+    LaunchedEffect(selectedKey, queryHash) {
+        if (selectedKey.isNotEmpty()) {
+            selectionMap[queryHash] = selectedKey
+
+            queryQueue.remove(queryHash); queryQueue.addLast(queryHash)
+
+            while (queryQueue.size > 20) {
+                val eldest = queryQueue.removeFirst()
+                selectionMap.remove(eldest)
+            }
+        }
+    }
+
+    var scrollAnimationJob by remember { mutableStateOf<Job?>(null) }
+
+    // TODO:  1.  Optimise beyond-viewport rapid UP/DOWN nav, make it scrollby faster instead of animating item into view
+    //        2.  Make scroll animation smarter, predictive, interruptible
+    //             ( Interruption, velocity continuum via a central thread of control )
+    LaunchedEffect(selectedKey) {
+        val target = filtered.indexOfFirst { repoKey(it.value) == selectedKey }
+        if (target < 0) return@LaunchedEffect
+
+        // wait until we actually have something laid out
+        snapshotFlow { listState.layoutInfo.visibleItemsInfo.isNotEmpty() }.first { it }
+
+        scrollAnimationJob?.cancelAndJoin()
+        scrollAnimationJob = launch {
+            fun visibleRange(): IntRange = listState.layoutInfo.visibleItemsInfo.let {
+                (it.firstOrNull()?.index ?: 0)..(it.lastOrNull()?.index ?: 0)
+            }
+
+            fun avgVisibleSize(): Float = listState.layoutInfo.let { li ->
+                val v = li.visibleItemsInfo
+                val vp = (li.viewportEndOffset - li.viewportStartOffset).toFloat()
+                (v.map { it.size }.average().toFloat()).takeIf { it > 0f }
+                    ?: (vp / v.size.coerceAtLeast(1))
+            }
+
+            fun centerDelta(idx: Int): Float? = listState.layoutInfo.let { li ->
+                val item = li.visibleItemsInfo.firstOrNull { it.index == idx } ?: return@let null
+                val vpCenter = (li.viewportStartOffset + li.viewportEndOffset) / 2f
+                item.offset + item.size / 2f - vpCenter
+            }
+
+            val range0 = visibleRange()
+            if (target !in range0) {
+                val goingDown = target > range0.last
+                val itemsDelta = if (goingDown) target - range0.last + 0.5f
+                else range0.first - target + 0.5f
+                val dir = if (goingDown) +1 else -1
+                listState.animateScrollBy(
+                    dir * avgVisibleSize() * itemsDelta,
+                    tween(800, easing = FastOutSlowInEasing)
+                    // spring( stiffness = 420f,dampingRatio = DampingRatioLowBouncy, visibilityThreshold = 1f)
+                )
+            }
+
+            centerDelta(target)?.takeIf { abs(it) > 2f }?.let { delta ->
+                listState.animateScrollBy(
+                    delta,
+                    tween(600, easing = FastOutSlowInEasing)
+                    // swap to spring(...) for the plush kiss
+                    // spring(stiffness = 40f,dampingRatio = DampingRatioHighBouncy,visibilityThreshold = 1f)
+                )
+            }
+        }
+    }
+
+    ConstraintLayout(
+        Modifier
+            .fillMaxSize()
+            .focusRequester(focusRequester)
+            .onPreviewKeyEvent { keyEvent ->
+                // Only handle key press, not release, to prevent double navigation
+                if (keyEvent.type == KeyEventType.KeyDown
+                    && (keyEvent.key == Key.DirectionUp || keyEvent.key == Key.DirectionDown)
+                    && filtered.isNotEmpty()
+                ) {
+                    val currentIndex = filtered.indexOfFirst { repoKey(it.value) == selectedKey }
+                    val newIndex = when (keyEvent.key) {
+                        Key.DirectionUp -> (currentIndex - 1).coerceAtLeast(0)
+                        Key.DirectionDown -> (currentIndex + 1).coerceAtMost(filtered.size - 1)
+                        else -> currentIndex
+                    }
+
+                    if (newIndex != currentIndex) {
+                        selectedKey = repoKey(filtered[newIndex].value)
+                    }
+                    true
+                } else false
+            }
+    ) {
         val (topBar, bodyLeft, bodyRight) = createRefs()
 
         GlassTopBar(
@@ -218,11 +339,22 @@ private fun AuthenticatedPane(
                     fontSize = 34.sp,
                     textColor = Color.DarkGray/*, modifier = Modifier.align(Alignment.Center)*/
                 )
-                // TODO:   28 Aug Tue :    0. filter repos fuzzymatch  2. selection anims  3. THEN sync
+
+                // TODO:   28-30 Aug:
+                //          0. filter repos fuzzymatch  [DONE]
+                //          1. selection anims  [DONE]
+                //                 - - ^ done ^ - -
+                //                        --
+                //          2.  ENTER --> select repo --> Workspace details --> Workspace Sync Composable      🐬 🐬 🐬 🐬 🐬 WIP  🐬 🐬 🐬 🐬
+                //          3. Messaging ( around this time we Dolphin dive back into the Engine as well.
+                //                          Benchmark case, engine completion for kotlin-codebases, browsi capability etc.. )
+                //
+                //
 //                if (isWorkspaceSelected) {
 //                    Spacer(Modifier.width(8.dp))
 //                    WorkspaceSyncStatus(state = sync, modifier = Modifier.widthIn(max = 400.dp))
 //                }
+                // === === === === === === TODO === === === === === === //
 
                 Spacer(modifier = Modifier.height(8.dp))
 
@@ -236,6 +368,7 @@ private fun AuthenticatedPane(
 
         /* LEFT: list driven directly by `filtered` */
         LazyColumn(
+            state = listState,
             modifier = Modifier
                 .constrainAs(bodyLeft) {
                     top.linkTo(topBar.bottom, margin = 4.dp)
@@ -245,7 +378,7 @@ private fun AuthenticatedPane(
                     height = Dimension.fillToConstraints
                 }
                 .widthIn(max = 620.dp)
-                .padding(horizontal = 12.dp)
+                .padding(horizontal = 12.dp, vertical = 8.dp) // padding for breathing effects
         ) {
             items(
                 items = filtered,
@@ -253,15 +386,22 @@ private fun AuthenticatedPane(
             ) { iv ->
                 val origIdx = iv.index
                 val repo = iv.value
+                val isSelected = repoKey(repo) == selectedKey
 
                 GlassCard(
-                    selected = repo.name.contains("kaangpt", ignoreCase = true),
+                    selected = isSelected,
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 5.dp)
+                        .padding(horizontal = if (isSelected) 8.dp else 5.dp, vertical = if (isSelected) 8.dp else 4.dp)
                         .animateContentSize()
-                        .animateItem(),
-                    onClick = { println("repo click: ${repo.name}") }
+                        .animateItem(
+                            fadeInSpec = tween(1400, easing = FastOutSlowInEasing),
+                            fadeOutSpec = tween(100, easing = FastOutSlowInEasing),
+                            placementSpec = tween(676, easing = FastOutSlowInEasing)
+                        ),
+                    onClick = {
+                        selectedKey = repoKey(repo)
+                        println("repo click: ${repo.name}")
+                    }
                 ) {
                     Column(
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
