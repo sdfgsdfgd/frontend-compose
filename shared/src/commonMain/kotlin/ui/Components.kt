@@ -104,6 +104,7 @@ import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.layer.GraphicsLayer
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.layout
@@ -836,7 +837,7 @@ fun DynamicIslandWithLuxuryInput(
     value: TextFieldValue,
     onValueChange: (TextFieldValue) -> Unit,
     modifier: Modifier = Modifier,
-    placeholder: String = "Type something elegant…",
+    placeholder: String = "Type something…",
     blurRadius: Dp = 4.dp,
     splitOffset: Dp = 40.dp,
     onSend: (() -> Unit)? = null
@@ -847,7 +848,6 @@ fun DynamicIslandWithLuxuryInput(
 
         val stableMaxWidth = remember { maxWidth }   // cache maxWidth ONCE
         val stableMaxHeight = remember { maxHeight }
-
         var adaptive by remember(state) { mutableStateOf(state.island) }
         println("🔥 Adaptive size state updated: $adaptive")
 
@@ -868,13 +868,12 @@ fun DynamicIslandWithLuxuryInput(
                         onValueChange = onValueChange,
                         placeholder = placeholder,
                         singleLine = false,
-                        modifier = Modifier
-                            .islandAutosize(
-                                base = state.island,
-                                maxWidth = stableMaxWidth.also { println("🌟 maxWidth passed to islandAutosize: $it") },
-                                maxHeight = stableMaxHeight,
+                        modifier = Modifier.islandAutosize(
+                            base = state.island,
+                            maxWidth = stableMaxWidth.also { println("🌟 maxWidth passed to islandAutosize: $it") },
+                            maxHeight = stableMaxHeight,
 //                                contentPadding = contentPad
-                            ) { adaptive = it }
+                        ) { adaptive = it }
                     )
                 }
             },
@@ -1018,7 +1017,7 @@ fun LuxuryInput(
      * 4) Focus gating of the loop
      * 5) Space-run bias (+0.1 to t)
      * 6) Lag telemetry & first-target snap
-     * 7) Scroll-offset-aware caret draw (if needed)
+     * 7) Scroll-offset-aware caret draw (or % of line position preserved on scroll)
      */
     // TODO-1: Atomicity purist: if you want literal atomic XYH updates, use Animatable(Offset) + Animatable(height)
     //    with a TwoWayConverter so the solver is truly vectorized. Today’s visual sync is good, but this is bulletproof.
@@ -1127,8 +1126,7 @@ fun LuxuryInput(
                 //  -->  guarded onTextLayout (ignore minWidth==0 || minHeight==0 || size==0, and de-dupe).
                 //            stops caret/layout state from reacting to pre-passes
                 val c = it.layoutInput.constraints
-                val isPrepass =
-                    c.minWidth == 0 || c.minHeight == 0 || it.size.width == 0 || it.size.height == 0
+                val isPrepass = c.minWidth == 0 || c.minHeight == 0 || it.size.width == 0 || it.size.height == 0
                 if (isPrepass) return@BasicTextField
 
                 // Optional: de-dupe
@@ -1197,7 +1195,6 @@ fun LuxuryInput(
                         blendMode = BlendMode.Multiply,
                         alpha = 0.40f * env
                     )
-                    // (No glow here)
                 },
             decorationBox = { inner ->
                 Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterStart) {
@@ -1236,12 +1233,11 @@ fun LuxuryInput(
             val eRaw = glowProgress.coerceIn(0f, 1f)
             val e = FastOutSlowInEasing.transform(eRaw)
 
-            // knees like original
             val knee1 = lerp(0.18f, 0.30f, e)
             val knee2 = lerp(0.60f, 0.95f, e)
             val vScale = 1.15f
 
-            // original late-gate for highlight (wobble cadence)
+            // Late-gate for highlight (wobble cadence)
             val k = ((eRaw - 0.85f) / 0.15f).coerceIn(0f, 1f)
 
             val left    = caretX.value   // unsnapped = liquid motion
@@ -1281,11 +1277,11 @@ fun LuxuryInput(
                 )
             }
 
-            // Inner two — same pads (preserve wobble), α = env
+            // Inner two — pads (wobble), α = env
             drawGlowCapsule(2.dp.toPx(), 5.dp.toPx(), caretSpec.glowSoft, 0.32f, 0.20f, env)
             drawGlowCapsule(6.dp.toPx(), 10.dp.toPx(), caretSpec.glowStrong, 0.26f, 0.14f, env)
 
-            // === Upgrades for the outer highlight ===
+            // === Outer highlight ===
             if (eRaw > 0.85f) {
                 // 1) Stronger crest (amplitude + a touch bigger near crest)
                 val crestAmp = lerp(1f, 1.90f, FastOutSlowInEasing.transform(k)) // up to +90% α
@@ -1336,7 +1332,7 @@ fun LuxuryInput(
                         blendMode = BlendMode.Multiply
                         offset = Offset.Zero
                     }
-//                    // 5.2 colored rim (carved light).  Softlight/Plus  also looks nice
+                    // 5.2 colored rim (carved light).  Softlight/Plus  also looks nice
                     .innerShadow(shape) {
                         val e = t
                         radius = with(d) { lerp(1.dp, 12.dp, e).toPx() }

@@ -33,6 +33,7 @@ import androidx.compose.material.Text
 import androidx.compose.material.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -55,7 +56,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.lerp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.lerp
-import data.StandardClient
 import di.LocalDI
 import io.ktor.client.HttpClient
 import io.ktor.client.plugins.websocket.DefaultClientWebSocketSession
@@ -63,6 +63,7 @@ import io.ktor.client.plugins.websocket.webSocketSession
 import io.ktor.websocket.CloseReason
 import io.ktor.websocket.Frame
 import io.ktor.websocket.close
+import io.ktor.websocket.readReason
 import io.ktor.websocket.readText
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -87,6 +88,7 @@ import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import java.util.UUID
+import kotlin.math.min
 import kotlin.time.Duration.Companion.seconds
 
 @Composable
@@ -96,6 +98,9 @@ fun WorkspaceSyncStatus(
     minHeight: Dp = 28.dp,
     corner: Dp = 8.dp
 ) {
+    LaunchedEffect(state.status, state.progress, state.message) {
+        println("[WS-UI] status=${state.status} progress=${state.progress} msg=${state.message}")
+    }
     val widthFraction by animateFloatAsState(
         targetValue = state.progress.coerceIn(0, 100) / 100f,
         animationSpec = spring(stiffness = 200f, dampingRatio = 0.78f),
@@ -171,19 +176,6 @@ data class SyncUiState(
     val message: String? = null
 )
 
-// Optional reducer: map your backend payload to UI state.
-// Uses your GitHubRepoSelectResponse { status, message, progress } shape.
-//fun GitHubRepoSelectResponse.reduce(prev: SyncUiState): SyncUiState = when (status.lowercase()) {
-//    "error" -> SyncUiState(SyncStatus.Error(message), progress ?: prev.progress, message)
-//    "success" -> SyncUiState(SyncStatus.Synchronized, 100, message ?: "Synchronized ✨")
-//    "cloning" -> {
-//        val p = (progress ?: 0).coerceIn(0, 100)
-//        val st = if (p < 10) SyncStatus.Initializing else SyncStatus.Syncing
-//        SyncUiState(st, p, message)
-//    }
-//    else -> prev
-//}
-
 // ----- colors -----
 private fun scrimColorFor(status: SyncStatus): Color = when (status) {
     is SyncStatus.Error -> Color(0xFF7F1D1D)    // red-900
@@ -206,17 +198,10 @@ fun Modifier.progressScrim(fraction: Float, color: Color) = drawBehind {
 // ----- label helpers -----
 @Composable
 private fun statusLabel(state: SyncUiState): String = when (state.status) {
-    SyncStatus.Initializing ->
-        state.message ?: "Initializing ${if (state.progress > 0) "${state.progress}%" else "..."}"
-
-    SyncStatus.Syncing ->
-        state.message ?: "Syncing Repository ${state.progress}%"
-
-    SyncStatus.Synchronized ->
-        state.message ?: "Synchronized ✨"
-
-    is SyncStatus.Error ->
-        state.message ?: state.status.reason ?: "Sync Error"
+    SyncStatus.Initializing -> state.message ?: "Initializing ${if (state.progress > 0) "${state.progress}%" else "..."}"
+    SyncStatus.Syncing -> state.message ?: "Syncing Repository ${state.progress}%"
+    SyncStatus.Synchronized -> state.message ?: "Synchronized ✨"
+    is SyncStatus.Error -> state.message ?: state.status.reason ?: "Sync Error"
 }
 
 // ============================================================================= MODELS ===========================================
@@ -234,11 +219,11 @@ data class GitHubRepoData(
 
 @Serializable
 data class GitHubRepoSelectMessage(
-    val type: String = "workspace_select_github",
+    val type: String, // "workspace_select_github"
     val messageId: String,
     val repoData: GitHubRepoData,
     val accessToken: String? = null,
-    val clientTimestamp: Long = System.currentTimeMillis()
+    val clientTimestamp: Long
 )
 
 @Serializable
@@ -279,7 +264,6 @@ data class WsMessage(
     val payload: String? = null
 )
 
-
 sealed interface ServerEvent {
     data class Repo(val value: GitHubRepoSelectResponse) : ServerEvent
     data class Container(val value: ContainerResponse) : ServerEvent
@@ -292,9 +276,16 @@ enum class ConnectionState { Disconnected, Connecting, Connected }
 
 class WsClient(
     private val baseurl: String = "ws://sdfgsdfg.net/ws",
-    private val client: HttpClient = StandardClient.http,
-    private val json: Json = StandardClient.J,
+    private val client: HttpClient,
+    private val json: Json,
 ) {
+    // ----- logging helpers -----
+    private val logEnabled = true
+    private fun log(tag: String, msg: String) {
+        if (!logEnabled) return
+        println("[WS-$tag] $msg")
+    }
+
     // TODO: one day  DI the scope/dispatcher, inject shared scopes
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
@@ -313,11 +304,11 @@ class WsClient(
     init {
         scope.launch {
             state.collect { connState ->
-                println("🌐 State: $connState")
+                log("STATE", connState.toString())
                 if (connState == ConnectionState.Connected) launchHeartbeat()
             }
         }
-        scope.launch { runCatching { connect() }.onFailure { println("💥 Error: ${it.message}") } }
+        scope.launch { runCatching { connect() }.onFailure { log("ERROR", "connect: ${it.message}") } }
     }
 
     private fun CoroutineScope.launchHeartbeat() {
@@ -339,62 +330,80 @@ class WsClient(
         if (session != null) return
         _state.value = ConnectionState.Connecting
 
+        log("CONNECT", "opening $baseurl …")
         session = client.webSocketSession(baseurl).also { ws ->
             _state.value = ConnectionState.Connected
-
+            log("CONNECT", "connected")
             launchReader(ws)
             launchPinger()
         }
     }
 
-
     private fun launchReader(ws: DefaultClientWebSocketSession) = scope.launch {
         runCatching {
             ws.incoming.consumeAsFlow().collect { frame ->
-                (frame as? Frame.Text)?.readText()?.let { text ->
-                    dispatchInbound(text)
+                when (frame) {
+                    is Frame.Text -> {
+                        val text = frame.readText()
+                        log("RECV", "text ${text.length}B: $text${if (text.length > 400) "…" else ""}")
+                        parseReceived(text)
+                    }
+                    is Frame.Binary -> log("RECV", "binary ${frame.data.size}B")
+                    is Frame.Close -> log("RECV", "close frame: ${frame.readReason()?.message}")
+                    is Frame.Ping -> log("RECV", "ping")
+                    is Frame.Pong -> log("RECV", "pong") // todo: ffs one of these is unnecessary, we only get ping or pong from server, which was it xD
                 }
             }
-        }.onFailure { _events.emit(ServerEvent.Closed(it.message)) }
-
+        }.onFailure { e ->
+            log("ERROR", "reader: ${e.message}")
+            _events.emit(ServerEvent.Closed(e.message))
+        }
 
         cleanup()
     }
 
-
     private fun launchPinger() = scope.launch {
         while (isActive) {
             delay(5.seconds)
+            log("PING", "sending ping")
             send(WsMessage(type = "ping", clientTimestamp = System.currentTimeMillis()))
         }
     }
 
-
     suspend fun disconnect() {
+        log("DISCONNECT", "closing by client")
         session?.close(CloseReason(CloseReason.Codes.NORMAL, "client_close"))
         cleanup()
     }
 
 
     private fun cleanup() {
+        log("CLEANUP", "tearing down session")
         session = null
         _state.value = ConnectionState.Disconnected
     }
 
     // -------- high‑level ops
-
     fun selectRepoFlow(
         repo: GitHubRepoData,
         accessToken: String?
     ): Flow<GitHubRepoSelectResponse> = channelFlow {
         val id = UUID.randomUUID().toString()
-        val msg = GitHubRepoSelectMessage(messageId = id, repoData = repo, accessToken = accessToken)
+        val msg = GitHubRepoSelectMessage(
+            type = "workspace_select_github",
+            messageId = id,
+            repoData = repo,
+            accessToken = accessToken,
+            clientTimestamp = System.currentTimeMillis()
+        )
+        log("FLOW", "selectRepo start id=$id repo=${repo.owner}/${repo.name} token=${accessToken}")
 
         // collect only our correlation id
         val collector = launch {
             events.collect { ev ->
                 val r = (ev as? ServerEvent.Repo)?.value ?: return@collect
                 if (r.messageId == id) {
+                    log("FLOW", "selectRepo progress id=$id status=${r.status} progress=${r.progress} msg=${r.message}")
                     trySend(r)
                     if (r.status == "success" || r.status == "error") cancel()
                 }
@@ -408,6 +417,7 @@ class WsClient(
     fun startContainerFlow(openaiApiKey: String? = null): Flow<ContainerResponse> = channelFlow {
         val id = UUID.randomUUID().toString()
         val msg = ContainerMessage(type = "arcana_start", messageId = id, openaiApiKey = openaiApiKey)
+        log("FLOW", "container start id=$id key=${openaiApiKey}")
 
         val collector = launch {
             events.collect { ev ->
@@ -421,36 +431,73 @@ class WsClient(
     }
 
     suspend fun sendContainerInput(text: String) {
+        val preview = text.replace("\n", "\\n").let { it.substring(0, min(200, it.length)) }
+        log("SEND", "container_input ${text.length}B: $preview${if (text.length > 200) "…" else ""}")
         send(ContainerMessage(type = "container_input", input = text))
     }
 
     suspend fun stopContainer() {
+        log("SEND", "container_stop")
         send(ContainerMessage(type = "container_stop"))
     }
 
     // -------- internals
-    private suspend fun dispatchInbound(text: String) {
-        json.parseToJsonElement(text).let { el ->
-            when (el.jsonObject["type"]?.jsonPrimitive?.content) {
-                "workspace_select_github_response" -> ServerEvent.Repo(json.decodeFromJsonElement(el))
-                "container_response" -> ServerEvent.Container(json.decodeFromJsonElement(el))
-                "pong" -> json.decodeFromJsonElement<WsMessage>(el).also(::handlePong).let(ServerEvent::Pong)
-                else -> ServerEvent.Raw(text)
+    private suspend fun parseReceived(text: String) {
+        val el = json.parseToJsonElement(text)
+        val type = el.jsonObject["type"]?.jsonPrimitive?.content?.lowercase()
+        val event = when (type) {
+            "workspace_select_github_response" -> runCatching {
+                json.decodeFromJsonElement<GitHubRepoSelectResponse>(el)
+            }.onSuccess {
+                log("PARSE", "repoResponse id=${it.messageId} status=${it.status} progress=${it.progress} msg=${it.message}")
+            }.map(ServerEvent::Repo).getOrElse { ServerEvent.Raw(text) }
+            "container_response" -> runCatching {
+                json.decodeFromJsonElement<ContainerResponse>(el)
+            }.onSuccess {
+                log("PARSE", "containerResponse id=${it.messageId} status=${it.status} outputLen=${it.output?.length ?: 0}")
+            }.map(ServerEvent::Container).getOrElse { ServerEvent.Raw(text) }
+            "pong" -> runCatching {
+                json.decodeFromJsonElement<WsMessage>(el)
+            }.onSuccess {
+                log("PARSE", "pong ts=${it.serverTimestamp}")
+                handlePong(it)
+            }.map(ServerEvent::Pong).getOrElse { ServerEvent.Raw(text) }
+            else -> {
+                // Fallback: try decoding known payloads even when "type" is missing
+                runCatching { json.decodeFromJsonElement<GitHubRepoSelectResponse>(el) }
+                    .onSuccess {
+                        log("PARSE", "repoResponse(no-type) id=${it.messageId} status=${it.status} progress=${it.progress} msg=${it.message}")
+                    }
+                    .map(ServerEvent::Repo)
+                    .recoverCatching {
+                        json.decodeFromJsonElement<ContainerResponse>(el).also { c ->
+                            log("PARSE", "containerResponse(no-type) id=${c.messageId} status=${c.status} outputLen=${c.output?.length ?: 0}")
+                        }.let(ServerEvent::Container)
+                    }
+                    .getOrElse {
+                        log("PARSE", "raw unknown: $text")
+                        ServerEvent.Raw(text)
+                    }
             }
-        }.also { _events.emit(it) }
+        }
+        _events.emit(event)
     }
-
 
     private fun handlePong(msg: WsMessage) {
         val latencyMs = System.currentTimeMillis() - (msg.clientTimestamp ?: return)
         _latency.value = latencyMs
-        println("🔥 RTT: $latencyMs ms")
+        log("RTT", "$latencyMs ms")
     }
 
-
-    private suspend inline fun <reified T> send(payload: T) = session
-        ?.send(Frame.Text(json.encodeToString(payload)))
-        ?: error("WS not connected")
+    private suspend inline fun <reified T> send(payload: T) {
+        val js = json.encodeToString(payload)
+        log("SEND", "${payload!!::class.simpleName ?: "payload"} ${js.length}B: ${js.substring(0..200)}}")
+        val s = session ?: run {
+            log("ERROR", "send: no session")
+            error("WS not connected")
+        }
+        s.send(Frame.Text(js))
+    }
 }
 
 @Composable
@@ -545,6 +592,7 @@ fun HeartbeatIndicator(modifier : Modifier = Modifier) {
         }
 
         if (state == ConnectionState.Disconnected) {
+            // TODO:  Smart / Backoff  reconnection instead
             TextButton(onClick = { client.scope.launch { client.connect() } }) {
                 Text("Reconnect", color = Color(0xFF60A5FA))
             }

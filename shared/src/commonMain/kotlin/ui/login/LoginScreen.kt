@@ -1,6 +1,9 @@
 package ui.login
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -15,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
@@ -24,6 +28,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -40,6 +45,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -55,6 +61,8 @@ import data.model.GithubRepoDTO
 import data.model.GithubUser
 import di.DI
 import di.LocalDI
+import kotlinx.coroutines.DelicateCoroutinesApi
+import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
@@ -158,12 +166,16 @@ fun LoginScreen(
     }
 }
 
+@OptIn(DelicateCoroutinesApi::class)
 @Composable
 private fun AuthenticatedPane(
     auth: AuthState.Authenticated,
     repos: List<GithubRepoDTO>,
     onAuthed: (AuthState.Authenticated) -> Unit
 ) {
+    // <-- WS Client -->
+    val ws = LocalDI.current.websocketClient
+
     // <-- INPUT -->
     var query by rememberSaveable(stateSaver = TextFieldValue.Saver) { mutableStateOf(TextFieldValue("")) }
 
@@ -174,7 +186,7 @@ private fun AuthenticatedPane(
 
     // todo: make sure deep-diff works with repo commits, and this triggers with `repos` updates
     // Minimal fuzzy: tokens must each match index OR be contained OR be a subsequence
-    val filtered: List<IndexedValue<GithubRepoDTO>> by remember(ordered, query.text) {
+    val reposFiltered: List<IndexedValue<GithubRepoDTO>> by remember(ordered, query.text) {
         derivedStateOf {
             val tokens = query.text.trim().lowercase().split(Regex("\\s+")).filter { it.isNotEmpty() }
             if (tokens.isEmpty())
@@ -195,9 +207,15 @@ private fun AuthenticatedPane(
     }
 
     val onAuthedState by rememberUpdatedState(onAuthed)
+    // Job handle for backend selection flow; declared early for lifecycle hooks
+    var selectJob by remember { mutableStateOf<Job?>(null) }
     LaunchedEffect(Unit) {
         onAuthedState(auth)
         focusRequester.requestFocus() // Auto-focis
+    }
+
+    DisposableEffect(Unit) {
+        onDispose { selectJob?.cancel() }
     }
 
     // Keyboard navigation and selection state per query persistence
@@ -205,11 +223,11 @@ private fun AuthenticatedPane(
     val queryQueue = remember { ArrayDeque<Int>() }
     val queryHash = query.text.hashCode()
 
-    var selectedKey by remember(queryHash, filtered) {
+    var selectedKey by remember(queryHash, reposFiltered) {
         mutableStateOf(
             selectionMap[queryHash]?.takeIf { savedKey ->
-                filtered.any { repoKey(it.value) == savedKey }
-            } ?: filtered.firstOrNull()?.let { repoKey(it.value) }.orEmpty()
+                reposFiltered.any { repoKey(it.value) == savedKey }
+            } ?: reposFiltered.firstOrNull()?.let { repoKey(it.value) }.orEmpty()
         )
     }
     LaunchedEffect(selectedKey, queryHash) {
@@ -227,11 +245,15 @@ private fun AuthenticatedPane(
 
     var scrollAnimationJob by remember { mutableStateOf<Job?>(null) }
 
+    // Workspace selection + sync UI state
+    var isWorkspaceSelected by remember { mutableStateOf(false) }
+    var sync by remember { mutableStateOf(SyncUiState()) }
+
     // TODO:  1.  Optimise beyond-viewport rapid UP/DOWN nav, make it scrollby faster instead of animating item into view
     //        2.  Make scroll animation smarter, predictive, interruptible
     //             ( Interruption, velocity continuum via a central thread of control )
     LaunchedEffect(selectedKey) {
-        val target = filtered.indexOfFirst { repoKey(it.value) == selectedKey }
+        val target = reposFiltered.indexOfFirst { repoKey(it.value) == selectedKey }
         if (target < 0) return@LaunchedEffect
 
         // wait until we actually have something laid out
@@ -285,22 +307,71 @@ private fun AuthenticatedPane(
             .fillMaxSize()
             .focusRequester(focusRequester)
             .onPreviewKeyEvent { keyEvent ->
-                // Only handle key press, not release, to prevent double navigation
-                if (keyEvent.type == KeyEventType.KeyDown
-                    && (keyEvent.key == Key.DirectionUp || keyEvent.key == Key.DirectionDown)
-                    && filtered.isNotEmpty()
-                ) {
-                    val currentIndex = filtered.indexOfFirst { repoKey(it.value) == selectedKey }
-                    val newIndex = when (keyEvent.key) {
-                        Key.DirectionUp -> (currentIndex - 1).coerceAtLeast(0)
-                        Key.DirectionDown -> (currentIndex + 1).coerceAtMost(filtered.size - 1)
-                        else -> currentIndex
-                    }
+                if (keyEvent.type == KeyEventType.KeyDown && reposFiltered.isNotEmpty()) {
+                    when (keyEvent.key) {
+                        Key.DirectionUp, Key.DirectionDown -> {
+                            val currentIndex = reposFiltered.indexOfFirst { repoKey(it.value) == selectedKey }
+                            val newIndex = when (keyEvent.key) {
+                                Key.DirectionUp -> (currentIndex - 1).coerceAtLeast(0)
+                                Key.DirectionDown -> (currentIndex + 1).coerceAtMost(reposFiltered.size - 1)
+                                else -> currentIndex
+                            }
+                            if (newIndex != currentIndex) {
+                                selectedKey = repoKey(reposFiltered[newIndex].value)
+                            }
+                            true
+                        }
+                        Key.Enter, Key.NumPadEnter -> {
+                            if (!isWorkspaceSelected) {
+                                reposFiltered.firstOrNull { repoKey(it.value) == selectedKey && !isWorkspaceSelected }?.value?.let { selectedRepo ->
+                                    isWorkspaceSelected = true
+                                    // Seed initial sync state – backend wiring can update this later
+                                    sync = SyncUiState(status = SyncStatus.Initializing, progress = 0, message = "Preparing workspace…")
+                                    println("ENTER: selected repo ${selectedRepo.name} (${selectedRepo.id})")
 
-                    if (newIndex != currentIndex) {
-                        selectedKey = repoKey(filtered[newIndex].value)
+                                    // Kick off backend selection flow with logging and UI updates
+                                    selectJob?.cancel()
+                                    val (owner, name) = selectedRepo.fullName.split('/').let {
+                                        (it.getOrNull(0) ?: "") to (it.getOrNull(1) ?: selectedRepo.name)
+                                    }
+                                    val repoData = GitHubRepoData(
+                                        repoId = selectedRepo.id,
+                                        name = name,
+                                        owner = owner,
+                                        url = selectedRepo.htmlUrl,
+                                        branch = null
+                                    )
+                                    val token = auth.token.accessToken
+
+                                    selectJob = GlobalScope.launch {
+                                        ws.selectRepoFlow(repoData, token).collect { r ->
+                                            val p = (r.progress ?: 0).coerceIn(0, 100)
+                                            sync = when (r.status.lowercase()) {
+                                                "error" -> SyncUiState(SyncStatus.Error(r.message), p, r.message)
+                                                "success" -> SyncUiState(SyncStatus.Synchronized, 100, r.message ?: "Synchronized ✨")
+                                                "cloning" -> {
+                                                    val st = if (p < 10) SyncStatus.Initializing else SyncStatus.Syncing
+                                                    SyncUiState(st, p, r.message)
+                                                }
+
+                                                else -> sync
+                                            }
+                                        }
+                                    }
+                                }
+                                true
+                            } else false
+                        }
+                        Key.Escape -> {
+                            if (isWorkspaceSelected) {
+                                isWorkspaceSelected = false
+                                selectJob?.cancel()
+                                println("ESC: returning to repo list")
+                                true
+                            } else false
+                        }
+                        else -> false
                     }
-                    true
                 } else false
             }
     ) {
@@ -335,7 +406,7 @@ private fun AuthenticatedPane(
                         start.linkTo(parent.start)
                         end.linkTo(parent.end)
                     },
-                    text = "some other content toooooo",
+                    text = "Select a workspace to continue",
                     fontSize = 34.sp,
                     textColor = Color.DarkGray/*, modifier = Modifier.align(Alignment.Center)*/
                 )
@@ -345,15 +416,15 @@ private fun AuthenticatedPane(
                 //          1. selection anims  [DONE]
                 //                 - - ^ done ^ - -
                 //                        --
-                //          2.  ENTER --> select repo --> Workspace details --> Workspace Sync Composable      🐬 🐬 🐬 🐬 🐬 WIP  🐬 🐬 🐬 🐬
+                //          2.  ENTER --> select repo --> Workspace details --> Workspace Sync Composable
                 //          3. Messaging ( around this time we Dolphin dive back into the Engine as well.
                 //                          Benchmark case, engine completion for kotlin-codebases, browsi capability etc.. )
                 //
                 //
-//                if (isWorkspaceSelected) {
-//                    Spacer(Modifier.width(8.dp))
-//                    WorkspaceSyncStatus(state = sync, modifier = Modifier.widthIn(max = 400.dp))
-//                }
+                AnimatedVisibility(visible = isWorkspaceSelected, enter = fadeIn(tween(660)), exit = fadeOut(tween(220))) {
+                    Spacer(Modifier.width(8.dp))
+                    WorkspaceSyncStatus(state = sync, modifier = Modifier.widthIn(max = 400.dp))
+                }
                 // === === === === === === TODO === === === === === === //
 
                 Spacer(modifier = Modifier.height(8.dp))
@@ -366,9 +437,9 @@ private fun AuthenticatedPane(
             }
         }
 
-        /* LEFT: list driven directly by `filtered` */
-        LazyColumn(
-            state = listState,
+        /* LEFT: list driven directly by `filtered` with fade-out on selection */
+        AnimatedVisibility(
+            visible = !isWorkspaceSelected,
             modifier = Modifier
                 .constrainAs(bodyLeft) {
                     top.linkTo(topBar.bottom, margin = 4.dp)
@@ -378,67 +449,73 @@ private fun AuthenticatedPane(
                     height = Dimension.fillToConstraints
                 }
                 .widthIn(max = 620.dp)
-                .padding(horizontal = 12.dp, vertical = 8.dp) // padding for breathing effects
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            enter = fadeIn(tween(160)),
+            exit = fadeOut(tween(240))
         ) {
-            items(
-                items = filtered,
-                key = { iv -> repoKey(iv.value) }
-            ) { iv ->
-                val origIdx = iv.index
-                val repo = iv.value
-                val isSelected = repoKey(repo) == selectedKey
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxSize()
+            ) {
+                items(
+                    items = reposFiltered,
+                    key = { iv -> repoKey(iv.value) }
+                ) { iv ->
+                    val origIdx = iv.index
+                    val repo = iv.value
+                    val isSelected = repoKey(repo) == selectedKey
 
-                GlassCard(
-                    selected = isSelected,
-                    modifier = Modifier
-                        .padding(horizontal = if (isSelected) 8.dp else 5.dp, vertical = if (isSelected) 8.dp else 4.dp)
-                        .animateContentSize()
-                        .animateItem(
-                            fadeInSpec = tween(1400, easing = FastOutSlowInEasing),
-                            fadeOutSpec = tween(100, easing = FastOutSlowInEasing),
-                            placementSpec = tween(676, easing = FastOutSlowInEasing)
-                        ),
-                    onClick = {
-                        selectedKey = repoKey(repo)
-                        println("repo click: ${repo.name}")
-                    }
-                ) {
-                    Column(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
-                        horizontalAlignment = Alignment.Start
+                    GlassCard(
+                        selected = isSelected,
+                        modifier = Modifier
+                            .padding(horizontal = if (isSelected) 8.dp else 5.dp, vertical = if (isSelected) 8.dp else 4.dp)
+                            .animateContentSize()
+                            .animateItem(
+                                fadeInSpec = tween(1400, easing = FastOutSlowInEasing),
+                                fadeOutSpec = tween(100, easing = FastOutSlowInEasing),
+                                placementSpec = tween(676, easing = FastOutSlowInEasing)
+                            ),
+                        onClick = {
+                            selectedKey = repoKey(repo)
+                            println("repo click: ${repo.name}")
+                        }
                     ) {
-                        SkeuoText(
-                            text = "${origIdx + 1}:  ${repo.name}",
-                            fontSize = 34.sp,
-                            textColor = Color.Yellow.copy(alpha = 0.75f), // Color(0xddFFD966), // Color.Yellow,
-                            modifier = Modifier.wrapContentWidth().align(Alignment.CenterHorizontally)//.align(Alignment.Top)
-                        )
-                        if (repo.description?.isNotBlank() == true) Spacer(Modifier.height(16.dp))
-                        SkeuoText(
-                            repo.description.orEmpty(),
-                            fontSize = 18.sp,
-                            textColor = Color(0xee898989),
-                            modifier = Modifier.wrapContentWidth().align(Alignment.Start)
-                        )
-                        if (repo.description?.isNotBlank() == true) Spacer(Modifier.height(4.dp))
-                        Text(
-                            text = " 🫆 ${repo.language ?: "Unknown"}    ✨     ${repo.stars}     ·     ${
-                                Instant.parse(repo.updatedAt)                              // ISO string → Instant
-                                    .toLocalDateTime(TimeZone.currentSystemDefault())      // local time
-                                    .format(                                               // pretty -> “4 May 2025 · 16:54”
-                                        LocalDateTime.Format {
-                                            dayOfMonth(); char(' ')
-                                            monthName(MonthNames.ENGLISH_ABBREVIATED); char(' ')
-                                            year(); chars(" · ")
-                                            hour(); char(':'); minute()
-                                        }
-                                    )
-                            }     ·  ",
-                            fontSize = 14.sp,
-                            color = Color(0x88B0B0B0),
-                            modifier = Modifier.wrapContentWidth().align(Alignment.Start)
-                        )
-                        // todo-2: color coded   <3h (green)  <1w (yellow)  >1w (red)
+                        Column(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+                            horizontalAlignment = Alignment.Start
+                        ) {
+                            SkeuoText(
+                                text = "${origIdx + 1}:  ${repo.name}",
+                                fontSize = 34.sp,
+                                textColor = Color.Yellow.copy(alpha = 0.75f),
+                                modifier = Modifier.wrapContentWidth().align(Alignment.CenterHorizontally)
+                            )
+                            if (repo.description?.isNotBlank() == true) Spacer(Modifier.height(16.dp))
+                            SkeuoText(
+                                repo.description.orEmpty(),
+                                fontSize = 18.sp,
+                                textColor = Color(0xee898989),
+                                modifier = Modifier.wrapContentWidth().align(Alignment.Start)
+                            )
+                            if (repo.description?.isNotBlank() == true) Spacer(Modifier.height(4.dp))
+                            Text(
+                                text = " 🫆 ${repo.language ?: "Unknown"}    ✨     ${repo.stars}     ·     ${
+                                    Instant.parse(repo.updatedAt)
+                                        .toLocalDateTime(TimeZone.currentSystemDefault())
+                                        .format(
+                                            LocalDateTime.Format {
+                                                dayOfMonth(); char(' ')
+                                                monthName(MonthNames.ENGLISH_ABBREVIATED); char(' ')
+                                                year(); chars(" · ")
+                                                hour(); char(':'); minute()
+                                            }
+                                        )
+                                }     ·  ",
+                                fontSize = 14.sp,
+                                color = Color(0x88B0B0B0),
+                                modifier = Modifier.wrapContentWidth().align(Alignment.Start)
+                            )
+                        }
                     }
                 }
             }

@@ -35,5 +35,8 @@ object DI {
         oauth = githubOAuth
     )
 
-    val websocketClient = WsClient()
+    val websocketClient = WsClient(
+        client = httpClient,
+        json = StandardClient.J
+    )
 }
