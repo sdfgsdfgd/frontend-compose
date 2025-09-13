@@ -87,6 +87,9 @@ import ui.IslandState
 import ui.SkeuoButton
 import ui.SkeuoText
 import ui.login.model.AuthState
+import ui.login.model.ws.GitHubRepoData
+import ui.login.model.ws.SyncStatus
+import ui.login.model.ws.SyncUiState
 import kotlin.math.abs
 
 @Composable
@@ -207,8 +210,8 @@ private fun AuthenticatedPane(
     }
 
     val onAuthedState by rememberUpdatedState(onAuthed)
-    // Job handle for backend selection flow; declared early for lifecycle hooks
     var selectJob by remember { mutableStateOf<Job?>(null) }
+
     LaunchedEffect(Unit) {
         onAuthedState(auth)
         focusRequester.requestFocus() // Auto-focis
@@ -230,6 +233,7 @@ private fun AuthenticatedPane(
             } ?: reposFiltered.firstOrNull()?.let { repoKey(it.value) }.orEmpty()
         )
     }
+
     LaunchedEffect(selectedKey, queryHash) {
         if (selectedKey.isNotEmpty()) {
             selectionMap[queryHash] = selectedKey
@@ -303,8 +307,7 @@ private fun AuthenticatedPane(
     }
 
     ConstraintLayout(
-        Modifier
-            .fillMaxSize()
+        Modifier.fillMaxSize()
             .focusRequester(focusRequester)
             .onPreviewKeyEvent { keyEvent ->
                 if (keyEvent.type == KeyEventType.KeyDown && reposFiltered.isNotEmpty()) {
@@ -321,6 +324,7 @@ private fun AuthenticatedPane(
                             }
                             true
                         }
+
                         Key.Enter, Key.NumPadEnter -> {
                             if (!isWorkspaceSelected) {
                                 reposFiltered.firstOrNull { repoKey(it.value) == selectedKey && !isWorkspaceSelected }?.value?.let { selectedRepo ->
@@ -348,7 +352,7 @@ private fun AuthenticatedPane(
                                             val p = (r.progress ?: 0).coerceIn(0, 100)
                                             sync = when (r.status.lowercase()) {
                                                 "error" -> SyncUiState(SyncStatus.Error(r.message), p, r.message)
-                                                "success" -> SyncUiState(SyncStatus.Synchronized, 100, r.message ?: "Synchronized ✨")
+                                                "success" -> SyncUiState(SyncStatus.Synchronized, 100, r.message)
                                                 "cloning" -> {
                                                     val st = if (p < 10) SyncStatus.Initializing else SyncStatus.Syncing
                                                     SyncUiState(st, p, r.message)
@@ -362,6 +366,7 @@ private fun AuthenticatedPane(
                                 true
                             } else false
                         }
+
                         Key.Escape -> {
                             if (isWorkspaceSelected) {
                                 isWorkspaceSelected = false
@@ -370,6 +375,7 @@ private fun AuthenticatedPane(
                                 true
                             } else false
                         }
+
                         else -> false
                     }
                 } else false
@@ -396,21 +402,9 @@ private fun AuthenticatedPane(
             )
         ) {
             ConstraintLayout(modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
-                val (indicator, content) = createRefs()
+                val (indicator, syncBar) = createRefs()
 
                 Spacer(modifier = Modifier.height(32.dp))
-                SkeuoText(
-                    modifier = Modifier.constrainAs(content) {
-                        top.linkTo(parent.top)
-                        bottom.linkTo(parent.bottom)
-                        start.linkTo(parent.start)
-                        end.linkTo(parent.end)
-                    },
-                    text = "Select a workspace to continue",
-                    fontSize = 34.sp,
-                    textColor = Color.DarkGray/*, modifier = Modifier.align(Alignment.Center)*/
-                )
-
                 // TODO:   28-30 Aug:
                 //          0. filter repos fuzzymatch  [DONE]
                 //          1. selection anims  [DONE]
@@ -421,13 +415,23 @@ private fun AuthenticatedPane(
                 //                          Benchmark case, engine completion for kotlin-codebases, browsi capability etc.. )
                 //
                 //
-                AnimatedVisibility(visible = isWorkspaceSelected, enter = fadeIn(tween(660)), exit = fadeOut(tween(220))) {
-                    Spacer(Modifier.width(8.dp))
-                    WorkspaceSyncStatus(state = sync, modifier = Modifier.widthIn(max = 400.dp))
+                AnimatedVisibility(
+                    visible = isWorkspaceSelected,
+                    enter = fadeIn(tween(660)),
+                    exit = fadeOut(tween(220)),
+                    modifier = Modifier.constrainAs(syncBar) {
+                        top.linkTo(parent.top)
+                        bottom.linkTo(parent.bottom)
+                        start.linkTo(parent.start)
+                        end.linkTo(parent.end)
+                    }
+                ) {
+                    WorkspaceSyncStatus(
+                        state = sync,
+                        modifier = Modifier.widthIn(min = 320.dp, max = 640.dp)
+                    )
                 }
                 // === === === === === === TODO === === === === === === //
-
-                Spacer(modifier = Modifier.height(8.dp))
 
                 HeartbeatIndicator(modifier = Modifier.constrainAs(indicator) {
                     top.linkTo(parent.top)

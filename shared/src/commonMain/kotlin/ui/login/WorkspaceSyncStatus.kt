@@ -5,6 +5,7 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
@@ -26,6 +27,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.MaterialTheme
@@ -36,12 +38,14 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.innerShadow
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -57,6 +61,8 @@ import androidx.compose.ui.unit.lerp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.lerp
 import di.LocalDI
+import ui.GlassStyle
+import ui.glass
 import io.ktor.client.HttpClient
 import io.ktor.client.plugins.websocket.DefaultClientWebSocketSession
 import io.ktor.client.plugins.websocket.webSocketSession
@@ -87,16 +93,26 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import ui.login.model.ws.ContainerMessage
+import ui.login.model.ws.ContainerResponse
+import ui.login.model.ws.GitHubRepoData
+import ui.login.model.ws.GitHubRepoSelectMessage
+import ui.login.model.ws.GitHubRepoSelectResponse
+import ui.login.model.ws.ServerEvent
+import ui.login.model.ws.SyncStatus
+import ui.login.model.ws.SyncUiState
+import ui.login.model.ws.WsMessage
 import java.util.UUID
 import kotlin.math.min
+import kotlin.math.abs
 import kotlin.time.Duration.Companion.seconds
 
 @Composable
 fun WorkspaceSyncStatus(
     state: SyncUiState,
     modifier: Modifier = Modifier,
-    minHeight: Dp = 28.dp,
-    corner: Dp = 8.dp
+    minHeight: Dp = 44.dp,
+    corner: Dp = 14.dp
 ) {
     LaunchedEffect(state.status, state.progress, state.message) {
         println("[WS-UI] status=${state.status} progress=${state.progress} msg=${state.message}")
@@ -129,7 +145,7 @@ fun WorkspaceSyncStatus(
                     steps = 0
                 )
             },
-        contentAlignment = Alignment.CenterStart
+        contentAlignment = Alignment.Center
     ) {
         AnimatedContent(
             targetState = label,
@@ -138,43 +154,14 @@ fun WorkspaceSyncStatus(
         ) { text: String ->
             Text(
                 text = text,
-                fontSize = 12.sp,
-                color = Color(0xFFB0B0B0),
+                fontSize = 13.sp,
+                color = Color(0xFFE6E6E6),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
         }
     }
 }
-
-// ----- Bonus: ultra-minimal bar variant (if you want the thin strip too) -----
-@Composable
-fun SyncThinBar(state: SyncUiState, modifier: Modifier = Modifier, height: Dp = 4.dp) {
-    val f by animateFloatAsState(
-        state.progress.coerceIn(0, 100) / 100f,
-        animationSpec = spring(stiffness = 200f, dampingRatio = 0.78f),
-        label = "thinWidth"
-    )
-    val c by animateColorAsState(scrimColorFor(state.status), tween(160), label = "thinTint")
-    Box(modifier.height(height).fillMaxWidth().clip(RoundedCornerShape(height / 2))) {
-        Box(Modifier.fillMaxWidth(f).fillMaxHeight().background(c))
-    }
-}
-
-// ----- model -----
-sealed interface SyncStatus {
-    data object Initializing : SyncStatus
-    data object Syncing : SyncStatus
-    data object Synchronized : SyncStatus
-    data class Error(val reason: String? = null) : SyncStatus
-}
-
-@Immutable
-data class SyncUiState(
-    val status: SyncStatus = SyncStatus.Initializing,
-    val progress: Int = 0,                 // 0..100
-    val message: String? = null
-)
 
 // ----- colors -----
 private fun scrimColorFor(status: SyncStatus): Color = when (status) {
@@ -206,71 +193,7 @@ private fun statusLabel(state: SyncUiState): String = when (state.status) {
 
 // ============================================================================= MODELS ===========================================
 
-// TODO-1: Move to   model/   when Q  done
-// TODO-2: create module/ shared between client/server, unify client + server
-@Serializable
-data class GitHubRepoData(
-    val repoId: Long? = null,
-    val name: String = "",
-    val owner: String = "",
-    val url: String = "",
-    val branch: String? = null
-)
 
-@Serializable
-data class GitHubRepoSelectMessage(
-    val type: String, // "workspace_select_github"
-    val messageId: String,
-    val repoData: GitHubRepoData,
-    val accessToken: String? = null,
-    val clientTimestamp: Long
-)
-
-@Serializable
-data class GitHubRepoSelectResponse(
-    val type: String = "workspace_select_github_response",
-    val messageId: String,
-    val status: String,          // "success" | "error" | "cloning"
-    val message: String,
-    val workspaceId: String? = null,
-    val progress: Int? = null,
-    val serverTimestamp: Long
-)
-
-@Serializable
-data class ContainerMessage(
-    val type: String, // "arcana_start" | "container_input" | "container_stop"
-    val messageId: String? = null,
-    val script: String? = null,
-    val input: String? = null,
-    val clientTimestamp: Long? = System.currentTimeMillis(),
-    val openaiApiKey: String? = null
-)
-
-@Serializable
-data class ContainerResponse(
-    val type: String = "container_response",
-    val messageId: String,
-    val status: String, // "starting" | "running" | "input_needed" | "error" | "exited"
-    val output: String? = null,
-    val serverTimestamp: Long = System.currentTimeMillis()
-)
-
-@Serializable
-data class WsMessage(
-    val type: String,
-    val clientTimestamp: Long? = null,
-    val serverTimestamp: Long? = null,
-    val payload: String? = null
-)
-
-sealed interface ServerEvent {
-    data class Repo(val value: GitHubRepoSelectResponse) : ServerEvent
-    data class Container(val value: ContainerResponse) : ServerEvent
-    data class Pong(val value: WsMessage) : ServerEvent
-    data class Raw(val json: String) : ServerEvent
-    data class Closed(val reason: String?) : ServerEvent
-}
 
 enum class ConnectionState { Disconnected, Connecting, Connected }
 
@@ -279,14 +202,14 @@ class WsClient(
     private val client: HttpClient,
     private val json: Json,
 ) {
-    // ----- logging helpers -----
+    // ----- Dumb logging for now  TODO: Switch to a global log  (push to local storage/DB + Cloud + param to remoteLog optionally, cloud only logs important )
     private val logEnabled = true
     private fun log(tag: String, msg: String) {
         if (!logEnabled) return
-        println("[WS-$tag] $msg")
+        println("[ WS - $tag ] $msg")
     }
 
-    // TODO: one day  DI the scope/dispatcher, inject shared scopes
+    // TODO:  DI a global scope/dispatcher, inject shared scopes
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     private val _state = MutableStateFlow(ConnectionState.Disconnected)
@@ -345,17 +268,17 @@ class WsClient(
                 when (frame) {
                     is Frame.Text -> {
                         val text = frame.readText()
-                        log("RECV", "text ${text.length}B: $text${if (text.length > 400) "…" else ""}")
+                        log("launchReader()", "text ${text.length}B: $text${if (text.length > 400) "…" else ""}")
                         parseReceived(text)
                     }
-                    is Frame.Binary -> log("RECV", "binary ${frame.data.size}B")
-                    is Frame.Close -> log("RECV", "close frame: ${frame.readReason()?.message}")
-                    is Frame.Ping -> log("RECV", "ping")
-                    is Frame.Pong -> log("RECV", "pong") // todo: ffs one of these is unnecessary, we only get ping or pong from server, which was it xD
+                    is Frame.Binary -> log("launchReader()", "binary ${frame.data.size}B")
+                    is Frame.Close -> log("launchReader()", "close frame: ${frame.readReason()?.message}")
+                    is Frame.Pong -> log("launchReader()", "pong")
+                    else -> log("launchReader()", "")
                 }
             }
         }.onFailure { e ->
-            log("ERROR", "reader: ${e.message}")
+            log("launchReader()", "reader: ${e.message}")
             _events.emit(ServerEvent.Closed(e.message))
         }
 
