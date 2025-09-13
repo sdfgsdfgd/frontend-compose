@@ -535,7 +535,10 @@ private fun AuthenticatedPane(
             },
             verticalArrangement = Arrangement.Center
         ) {
-            Box(contentAlignment = Alignment.Center) { NeonWelcome(auth.user) }
+            AnimatedVisibility(visible = !isWorkspaceSelected) {
+                Box(contentAlignment = Alignment.Center) { NeonWelcome(auth.user) }
+            }
+
             Spacer(Modifier.height(8.dp))
 
             DynamicIslandWithLuxuryInput(

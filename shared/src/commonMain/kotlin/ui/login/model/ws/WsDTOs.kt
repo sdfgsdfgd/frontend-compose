@@ -18,7 +18,6 @@ data class SyncUiState(
     val message: String? = null
 )
 
-
 @Serializable
 data class GitHubRepoData(
     val repoId: Long? = null,
