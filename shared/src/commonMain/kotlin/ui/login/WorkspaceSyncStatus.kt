@@ -73,6 +73,7 @@ import io.ktor.websocket.readReason
 import io.ktor.websocket.readText
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.BufferOverflow.DROP_OLDEST
@@ -105,6 +106,7 @@ import ui.login.model.ws.WsMessage
 import java.util.UUID
 import kotlin.math.min
 import kotlin.math.abs
+import kotlin.random.Random
 import kotlin.time.Duration.Companion.seconds
 
 @Composable
@@ -194,9 +196,9 @@ private fun statusLabel(state: SyncUiState): String = when (state.status) {
 // ============================================================================= MODELS ===========================================
 
 
-
 enum class ConnectionState { Disconnected, Connecting, Connected }
 
+// TODO-1: Lifecycle + reconnect. WsClient connects once and dies quietly on error. No retry/backoff, no window‑close cleanup.
 class WsClient(
     private val baseurl: String = "ws://sdfgsdfg.net/ws",
     private val client: HttpClient,
@@ -224,14 +226,21 @@ class WsClient(
     @Volatile
     private var session: DefaultClientWebSocketSession? = null
 
+    private var reconnectJob: Job? = null
+
+    @Volatile
+    private var backoffMs = 500L // grows to 3_600_000L (1h)
+
     init {
+        scope.launch { connectWithRetry() }
         scope.launch {
             state.collect { connState ->
                 log("STATE", connState.toString())
-                if (connState == ConnectionState.Connected) launchHeartbeat()
+
+                if (connState == ConnectionState.Connected)
+                    launchHeartbeat()
             }
         }
-        scope.launch { runCatching { connect() }.onFailure { log("ERROR", "connect: ${it.message}") } }
     }
 
     private fun CoroutineScope.launchHeartbeat() {
@@ -249,19 +258,6 @@ class WsClient(
         }
     }
 
-    suspend fun connect() {
-        if (session != null) return
-        _state.value = ConnectionState.Connecting
-
-        log("CONNECT", "opening $baseurl …")
-        session = client.webSocketSession(baseurl).also { ws ->
-            _state.value = ConnectionState.Connected
-            log("CONNECT", "connected")
-            launchReader(ws)
-            launchPinger()
-        }
-    }
-
     private fun launchReader(ws: DefaultClientWebSocketSession) = scope.launch {
         runCatching {
             ws.incoming.consumeAsFlow().collect { frame ->
@@ -271,6 +267,7 @@ class WsClient(
                         log("launchReader()", "text ${text.length}B: $text${if (text.length > 400) "…" else ""}")
                         parseReceived(text)
                     }
+
                     is Frame.Binary -> log("launchReader()", "binary ${frame.data.size}B")
                     is Frame.Close -> log("launchReader()", "close frame: ${frame.readReason()?.message}")
                     is Frame.Pong -> log("launchReader()", "pong")
@@ -293,35 +290,42 @@ class WsClient(
         }
     }
 
-    suspend fun disconnect() {
-        log("DISCONNECT", "closing by client")
-        session?.close(CloseReason(CloseReason.Codes.NORMAL, "client_close"))
-        cleanup()
-    }
-
-
     private fun cleanup() {
         log("CLEANUP", "tearing down session")
         session = null
         _state.value = ConnectionState.Disconnected
+        if (reconnectJob?.isActive != true) {
+            reconnectJob = scope.launch { connectWithRetry() }
+        }
     }
 
-    // -------- high‑level ops
+    private suspend fun connectWithRetry(currentBackoff: Long = 500L) {
+        _state.value = ConnectionState.Connecting
+
+        runCatching {
+            client.webSocketSession(baseurl).also { ws ->
+                session = ws
+                _state.value = ConnectionState.Connected
+                launchReader(ws)
+                launchPinger()
+            }
+        }.onFailure {
+            val jitter = currentBackoff / 4
+            val wait = currentBackoff + Random.nextLong(-jitter, jitter)
+            log("RETRY", "retrying in ${wait}ms")
+            delay(wait)
+            connectWithRetry(min(currentBackoff * 2, 3_600_000L))
+        }
+    }
+
+    // -------- Repo selection
     fun selectRepoFlow(
         repo: GitHubRepoData,
         accessToken: String?
     ): Flow<GitHubRepoSelectResponse> = channelFlow {
         val id = UUID.randomUUID().toString()
-        val msg = GitHubRepoSelectMessage(
-            type = "workspace_select_github",
-            messageId = id,
-            repoData = repo,
-            accessToken = accessToken,
-            clientTimestamp = System.currentTimeMillis()
-        )
         log("FLOW", "selectRepo start id=$id repo=${repo.owner}/${repo.name} token=${accessToken}")
 
-        // collect only our correlation id
         val collector = launch {
             events.collect { ev ->
                 val r = (ev as? ServerEvent.Repo)?.value ?: return@collect
@@ -333,7 +337,13 @@ class WsClient(
             }
         }
 
-        send(msg)
+        send(GitHubRepoSelectMessage(
+            type = "workspace_select_github",
+            messageId = id,
+            repoData = repo,
+            accessToken = accessToken,
+            clientTimestamp = System.currentTimeMillis()
+        ))
         awaitClose { collector.cancel() }
     }
 
@@ -374,17 +384,20 @@ class WsClient(
             }.onSuccess {
                 log("PARSE", "repoResponse id=${it.messageId} status=${it.status} progress=${it.progress} msg=${it.message}")
             }.map(ServerEvent::Repo).getOrElse { ServerEvent.Raw(text) }
+
             "container_response" -> runCatching {
                 json.decodeFromJsonElement<ContainerResponse>(el)
             }.onSuccess {
                 log("PARSE", "containerResponse id=${it.messageId} status=${it.status} outputLen=${it.output?.length ?: 0}")
             }.map(ServerEvent::Container).getOrElse { ServerEvent.Raw(text) }
+
             "pong" -> runCatching {
                 json.decodeFromJsonElement<WsMessage>(el)
             }.onSuccess {
                 log("PARSE", "pong ts=${it.serverTimestamp}")
                 handlePong(it)
             }.map(ServerEvent::Pong).getOrElse { ServerEvent.Raw(text) }
+
             else -> {
                 // Fallback: try decoding known payloads even when "type" is missing
                 runCatching { json.decodeFromJsonElement<GitHubRepoSelectResponse>(el) }
@@ -424,7 +437,7 @@ class WsClient(
 }
 
 @Composable
-fun HeartbeatIndicator(modifier : Modifier = Modifier) {
+fun HeartbeatIndicator(modifier: Modifier = Modifier) {
     val client = LocalDI.current.websocketClient
     val state by client.state.collectAsState()
     val latency by client.latency.collectAsState()
@@ -512,13 +525,6 @@ fun HeartbeatIndicator(modifier : Modifier = Modifier) {
                 style = MaterialTheme.typography.body2,
                 color = Color.White
             )
-        }
-
-        if (state == ConnectionState.Disconnected) {
-            // TODO:  Smart / Backoff  reconnection instead
-            TextButton(onClick = { client.scope.launch { client.connect() } }) {
-                Text("Reconnect", color = Color(0xFF60A5FA))
-            }
         }
 
         latency?.let { ms ->

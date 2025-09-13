@@ -2,10 +2,15 @@ package ui.login
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.tween
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.animateScrollBy
@@ -18,7 +23,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
@@ -27,8 +31,8 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -45,7 +49,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -249,9 +253,9 @@ private fun AuthenticatedPane(
 
     var scrollAnimationJob by remember { mutableStateOf<Job?>(null) }
 
-    // Workspace selection + sync UI state
-    var isWorkspaceSelected by remember { mutableStateOf(false) }
-    var sync by remember { mutableStateOf(SyncUiState()) }
+    //      [ selection + sync ]
+    var repoSelectedState by remember { mutableStateOf(false) }
+    var syncState by remember { mutableStateOf(SyncUiState()) }
 
     // TODO:  1.  Optimise beyond-viewport rapid UP/DOWN nav, make it scrollby faster instead of animating item into view
     //        2.  Make scroll animation smarter, predictive, interruptible
@@ -307,7 +311,8 @@ private fun AuthenticatedPane(
     }
 
     ConstraintLayout(
-        Modifier.fillMaxSize()
+        Modifier.animateContentSize()
+            .fillMaxSize()
             .focusRequester(focusRequester)
             .onPreviewKeyEvent { keyEvent ->
                 if (keyEvent.type == KeyEventType.KeyDown && reposFiltered.isNotEmpty()) {
@@ -326,11 +331,11 @@ private fun AuthenticatedPane(
                         }
 
                         Key.Enter, Key.NumPadEnter -> {
-                            if (!isWorkspaceSelected) {
-                                reposFiltered.firstOrNull { repoKey(it.value) == selectedKey && !isWorkspaceSelected }?.value?.let { selectedRepo ->
-                                    isWorkspaceSelected = true
+                            if (!repoSelectedState) {
+                                reposFiltered.firstOrNull { repoKey(it.value) == selectedKey && !repoSelectedState }?.value?.let { selectedRepo ->
+                                    repoSelectedState = true
                                     // Seed initial sync state – backend wiring can update this later
-                                    sync = SyncUiState(status = SyncStatus.Initializing, progress = 0, message = "Preparing workspace…")
+                                    syncState = SyncUiState(status = SyncStatus.Initializing, progress = 0, message = "Preparing workspace…")
                                     println("ENTER: selected repo ${selectedRepo.name} (${selectedRepo.id})")
 
                                     // Kick off backend selection flow with logging and UI updates
@@ -350,7 +355,7 @@ private fun AuthenticatedPane(
                                     selectJob = GlobalScope.launch {
                                         ws.selectRepoFlow(repoData, token).collect { r ->
                                             val p = (r.progress ?: 0).coerceIn(0, 100)
-                                            sync = when (r.status.lowercase()) {
+                                            syncState = when (r.status.lowercase()) {
                                                 "error" -> SyncUiState(SyncStatus.Error(r.message), p, r.message)
                                                 "success" -> SyncUiState(SyncStatus.Synchronized, 100, r.message)
                                                 "cloning" -> {
@@ -358,7 +363,7 @@ private fun AuthenticatedPane(
                                                     SyncUiState(st, p, r.message)
                                                 }
 
-                                                else -> sync
+                                                else -> syncState
                                             }
                                         }
                                     }
@@ -368,8 +373,8 @@ private fun AuthenticatedPane(
                         }
 
                         Key.Escape -> {
-                            if (isWorkspaceSelected) {
-                                isWorkspaceSelected = false
+                            if (repoSelectedState) {
+                                repoSelectedState = false
                                 selectJob?.cancel()
                                 println("ESC: returning to repo list")
                                 true
@@ -416,7 +421,7 @@ private fun AuthenticatedPane(
                 //
                 //
                 AnimatedVisibility(
-                    visible = isWorkspaceSelected,
+                    visible = repoSelectedState,
                     enter = fadeIn(tween(660)),
                     exit = fadeOut(tween(220)),
                     modifier = Modifier.constrainAs(syncBar) {
@@ -427,7 +432,7 @@ private fun AuthenticatedPane(
                     }
                 ) {
                     WorkspaceSyncStatus(
-                        state = sync,
+                        state = syncState,
                         modifier = Modifier.widthIn(min = 320.dp, max = 640.dp)
                     )
                 }
@@ -443,7 +448,7 @@ private fun AuthenticatedPane(
 
         /* LEFT: list driven directly by `filtered` with fade-out on selection */
         AnimatedVisibility(
-            visible = !isWorkspaceSelected,
+            visible = !repoSelectedState,
             modifier = Modifier
                 .constrainAs(bodyLeft) {
                     top.linkTo(topBar.bottom, margin = 4.dp)
@@ -454,8 +459,8 @@ private fun AuthenticatedPane(
                 }
                 .widthIn(max = 620.dp)
                 .padding(horizontal = 12.dp, vertical = 8.dp),
-            enter = fadeIn(tween(160)),
-            exit = fadeOut(tween(240))
+            enter = fadeIn(tween(1200)),
+            exit = fadeOut(tween(440))
         ) {
             LazyColumn(
                 state = listState,
@@ -526,17 +531,33 @@ private fun AuthenticatedPane(
         }
 
         /* RIGHT: hook the island to the same `query` state */
+        val bias by animateFloatAsState(
+            if (repoSelectedState) 0.5f else 0.7f,
+            tween(2620, easing = FastOutSlowInEasing)
+        )
+
         Column(
             modifier = Modifier.constrainAs(bodyRight) {
                 top.linkTo(topBar.bottom, 12.dp)
                 start.linkTo(bodyLeft.end, 4.dp)
                 end.linkTo(parent.end, 12.dp)
                 bottom.linkTo(parent.bottom, 12.dp)
+
+                horizontalBias = bias
             },
-            verticalArrangement = Arrangement.Center
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            AnimatedVisibility(visible = !isWorkspaceSelected) {
-                Box(contentAlignment = Alignment.Center) { NeonWelcome(auth.user) }
+            AnimatedVisibility(
+                visible = !repoSelectedState,
+                enter = fadeIn(tween(800, easing = FastOutSlowInEasing)) +
+                    scaleIn(tween(800, easing = FastOutSlowInEasing), transformOrigin = TransformOrigin.Center) +
+                            expandVertically(tween(800, easing = FastOutSlowInEasing), expandFrom = Alignment.Top),
+                exit = fadeOut(tween(1600, easing = FastOutSlowInEasing)) +
+                        shrinkVertically(tween(1600, easing = FastOutSlowInEasing), shrinkTowards = Alignment.Top) +
+                        scaleOut(tween(1600, easing = FastOutSlowInEasing), transformOrigin = TransformOrigin.Center)
+            ) {
+                NeonWelcome(auth.user)
             }
 
             Spacer(Modifier.height(8.dp))
@@ -545,7 +566,7 @@ private fun AuthenticatedPane(
                 state = islandState,
                 value = query,
                 onValueChange = { query = it },
-                onSend = { query = TextFieldValue("") } // clear on send
+                onSend = { query = TextFieldValue("") }
             )
 
             Spacer(Modifier.height(12.dp))
