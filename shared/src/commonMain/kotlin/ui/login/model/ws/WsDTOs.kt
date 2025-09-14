@@ -3,7 +3,8 @@ package ui.login.model.ws
 import androidx.compose.runtime.Immutable
 import kotlinx.serialization.Serializable
 
-// TODO-1: !!!Shared DTOs across stack:  Create module/ shared between client/server, unify client + server DTOs !!!
+// TODO-1: MOVE TO DATA LAYER WHAT IS THIS DOING IN UI LAYER
+// TODO-2: !!!Shared DTOs across stack:  Create module/ shared between client/server, unify client + server DTOs !!!
 sealed interface SyncStatus {
     data object Initializing : SyncStatus
     data object Syncing : SyncStatus

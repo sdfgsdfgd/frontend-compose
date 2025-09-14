@@ -1,6 +1,7 @@
 package ui.login
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
@@ -24,6 +25,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -47,6 +49,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
@@ -556,43 +559,33 @@ private fun AuthenticatedPane(
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            AnimatedVisibility(
-                visible = !repoSelectedState,
-                enter = fadeIn(tween(800, easing = FastOutSlowInEasing)) +
-                        scaleIn(tween(800, easing = FastOutSlowInEasing), transformOrigin = TransformOrigin.Center) +
-                        expandVertically(tween(800, easing = FastOutSlowInEasing), expandFrom = Alignment.Top),
-                exit = fadeOut(tween(1600, easing = FastOutSlowInEasing)) +
-                        shrinkVertically(tween(1600, easing = FastOutSlowInEasing), shrinkTowards = Alignment.Top) +
-                        scaleOut(tween(1600, easing = FastOutSlowInEasing), transformOrigin = TransformOrigin.Center)
-            ) {
+            AnimatedContentVisibility(!repoSelectedState) {
                 NeonWelcome(auth.user)
             }
 
             Spacer(Modifier.height(8.dp))
 
-            // CONTAINER MSGs
-            AnimatedVisibility(
-                visible = repoSelectedState,
-                enter = fadeIn(tween(800, easing = FastOutSlowInEasing)) +
-                        scaleIn(tween(800, easing = FastOutSlowInEasing), transformOrigin = TransformOrigin.Center) +
-                        expandVertically(tween(800, easing = FastOutSlowInEasing), expandFrom = Alignment.Top) +
-                        slideInVertically(tween(800, easing = FastOutSlowInEasing)) { fullHeight -> fullHeight },
-                exit = fadeOut(tween(1600, easing = FastOutSlowInEasing)) +
-                        shrinkVertically(tween(1600, easing = FastOutSlowInEasing), shrinkTowards = Alignment.Top) +
-                        scaleOut(tween(1600, easing = FastOutSlowInEasing), transformOrigin = TransformOrigin.Center) +
-                        slideOutVertically(tween(1600, easing = FastOutSlowInEasing))
-            ) {
+            // xx     - CONTAINER MSGS -
+            AnimatedContentVisibility(repoSelectedState) {
                 LazyColumn(
-                    modifier = Modifier.fillMaxWidth().padding(12.dp).animateContentSize(),
+                    modifier = Modifier
+                        .wrapContentSize()
+                        .padding(12.dp)
+                        .animateContentSize(),
                     verticalArrangement = Arrangement.Bottom,
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     items(containerOutputs) { line ->
-                        Text(line, color = Color.LightGray, fontFamily = FontFamily.Monospace)
+                        Text(
+                            text = line,
+                            color = Color.LightGray,
+                            fontFamily = FontFamily.Monospace
+                        )
                     }
                 }
             }
 
+            // xx    - INPUT -
             DynamicIslandWithLuxuryInput(
                 state = islandState,
                 value = query,
@@ -604,7 +597,7 @@ private fun AuthenticatedPane(
                 }
             )
 
-            // TODO:  [ Split Mode ]  Audio recording mode ?
+// TODO:  [ Split Mode ]  Audio recording mode ?
 //            Spacer(Modifier.height(12.dp))
 //            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(12.dp)) {
 //                ModeChip("Compact") { islandState = IslandState.Default }
@@ -614,6 +607,41 @@ private fun AuthenticatedPane(
         }
     }
 }
+
+@Composable
+fun AnimatedContentVisibility(
+    visible: Boolean,
+    content: @Composable AnimatedVisibilityScope.() -> Unit
+) {
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(animationSpec = tween(800, easing = FastOutSlowInEasing)) +
+                scaleIn(
+                    animationSpec = tween(800, easing = FastOutSlowInEasing),
+                    transformOrigin = TransformOrigin.Center
+                ) +
+                expandVertically(
+                    animationSpec = tween(800, easing = FastOutSlowInEasing),
+                    expandFrom = Alignment.Top
+                ) +
+                slideInVertically(
+                    animationSpec = tween(800, easing = FastOutSlowInEasing),
+                    initialOffsetY = { it }
+                ),
+        exit = fadeOut(animationSpec = tween(1600, easing = FastOutSlowInEasing)) +
+                scaleOut(
+                    animationSpec = tween(1600, easing = FastOutSlowInEasing),
+                    transformOrigin = TransformOrigin.Center
+                ) +
+                shrinkVertically(
+                    animationSpec = tween(1600, easing = FastOutSlowInEasing),
+                    shrinkTowards = Alignment.Top
+                ) +
+                slideOutVertically(animationSpec = tween(1600, easing = FastOutSlowInEasing)),
+        content = content
+    )
+}
+
 
 /* tiny helper: forgiving subsequence match, e.g. "krn" hits "KotlinRunner" */
 private fun isSubsequence(needle: String, hay: String): Boolean {
