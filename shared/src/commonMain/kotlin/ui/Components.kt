@@ -956,7 +956,7 @@ fun LuxuryInput(
         fontSize = 16.sp,
         textAlign = TextAlign.Start
     ),
-    singleLine: Boolean = true,
+    singleLine: Boolean = false,
 ) {
     var focused by remember { mutableStateOf(false) }
     var layout by remember { mutableStateOf<TextLayoutResult?>(null) }
@@ -1105,9 +1105,9 @@ fun LuxuryInput(
     Box(
         modifier
             .background(Color(0x33000000), RoundedCornerShape(10.dp))
-            .padding(horizontal = 12.dp)
             .wrapContentHeight(Alignment.Top)
             .wrapContentWidth(Alignment.Start),
+//            .padding(horizontal = 12.dp, vertical = 12.dp),
         contentAlignment = Alignment.TopStart
     ) {
         BasicTextField(

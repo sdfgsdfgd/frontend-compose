@@ -3,7 +3,6 @@ package ui.login
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -11,13 +10,14 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -36,6 +36,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -55,6 +56,7 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -186,7 +188,7 @@ private fun AuthenticatedPane(
     // <-- INPUT -->
     var query by rememberSaveable(stateSaver = TextFieldValue.Saver) { mutableStateOf(TextFieldValue("")) }
 
-    var islandState by rememberSaveable { mutableStateOf<IslandState>(IslandState.Default) }
+    val islandState by rememberSaveable { mutableStateOf<IslandState>(IslandState.Default) }
     val listState = rememberLazyListState() // for scrolling control
     val focusRequester = remember { FocusRequester() }
     val ordered = remember(repos) { repos.sortedByDescending { Instant.parse(it.updatedAt) } } // Repos sorted by updatedAt descending
@@ -213,8 +215,8 @@ private fun AuthenticatedPane(
         }
     }
 
-    val onAuthedState by rememberUpdatedState(onAuthed)
-    var selectJob by remember { mutableStateOf<Job?>(null) }
+    val onAuthedState by rememberUpdatedState(onAuthed) //
+    var selectJob by remember { mutableStateOf<Job?>(null) } // repo selection job handle
 
     LaunchedEffect(Unit) {
         onAuthedState(auth)
@@ -257,6 +259,9 @@ private fun AuthenticatedPane(
     var repoSelectedState by remember { mutableStateOf(false) }
     var syncState by remember { mutableStateOf(SyncUiState()) }
 
+    //      [ Container I/O ]
+    val containerOutputs = remember { mutableStateListOf<String>() }
+
     // TODO:  1.  Optimise beyond-viewport rapid UP/DOWN nav, make it scrollby faster instead of animating item into view
     //        2.  Make scroll animation smarter, predictive, interruptible
     //             ( Interruption, velocity continuum via a central thread of control )
@@ -293,9 +298,9 @@ private fun AuthenticatedPane(
                 else range0.first - target + 0.5f
                 val dir = if (goingDown) +1 else -1
                 listState.animateScrollBy(
-                    dir * avgVisibleSize() * itemsDelta,
-                    tween(800, easing = FastOutSlowInEasing)
-                    // spring( stiffness = 420f,dampingRatio = DampingRatioLowBouncy, visibilityThreshold = 1f)
+                    value = dir * avgVisibleSize() * itemsDelta,
+                   tween(800, easing = FastOutSlowInEasing)
+//                 spring(stiffness = 920f, dampingRatio = DampingRatioLowBouncy, visibilityThreshold = 1f)
                 )
             }
 
@@ -303,8 +308,7 @@ private fun AuthenticatedPane(
                 listState.animateScrollBy(
                     delta,
                     tween(600, easing = FastOutSlowInEasing)
-                    // swap to spring(...) for the plush kiss
-                    // spring(stiffness = 40f,dampingRatio = DampingRatioHighBouncy,visibilityThreshold = 1f)
+//                     spring(stiffness = 40f,dampingRatio = DampingRatioHighBouncy, visibilityThreshold = 1f)
                 )
             }
         }
@@ -355,14 +359,26 @@ private fun AuthenticatedPane(
                                     selectJob = GlobalScope.launch {
                                         ws.selectRepoFlow(repoData, token).collect { r ->
                                             val p = (r.progress ?: 0).coerceIn(0, 100)
+
                                             syncState = when (r.status.lowercase()) {
                                                 "error" -> SyncUiState(SyncStatus.Error(r.message), p, r.message)
-                                                "success" -> SyncUiState(SyncStatus.Synchronized, 100, r.message)
                                                 "cloning" -> {
                                                     val st = if (p < 10) SyncStatus.Initializing else SyncStatus.Syncing
                                                     SyncUiState(st, p, r.message)
                                                 }
+                                                "success" -> {
+                                                    syncState = SyncUiState(SyncStatus.Synchronized, 100, r.message)
 
+                                                    // 🔥🔥 --  Start container -- 🔥🔥
+                                                    launch {
+                                                        ws.startContainerFlow().collect { containerResp ->
+                                                            println("[Container] ${containerResp.status}: ${containerResp.output}")
+                                                            containerOutputs += containerResp.output ?: ""
+                                                        }
+                                                    }
+
+                                                    syncState
+                                                }
                                                 else -> syncState
                                             }
                                         }
@@ -530,20 +546,12 @@ private fun AuthenticatedPane(
             }
         }
 
-        /* RIGHT: hook the island to the same `query` state */
-        val bias by animateFloatAsState(
-            if (repoSelectedState) 0.5f else 0.7f,
-            tween(2620, easing = FastOutSlowInEasing)
-        )
-
         Column(
             modifier = Modifier.constrainAs(bodyRight) {
                 top.linkTo(topBar.bottom, 12.dp)
                 start.linkTo(bodyLeft.end, 4.dp)
                 end.linkTo(parent.end, 12.dp)
                 bottom.linkTo(parent.bottom, 12.dp)
-
-                horizontalBias = bias
             },
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
@@ -551,8 +559,8 @@ private fun AuthenticatedPane(
             AnimatedVisibility(
                 visible = !repoSelectedState,
                 enter = fadeIn(tween(800, easing = FastOutSlowInEasing)) +
-                    scaleIn(tween(800, easing = FastOutSlowInEasing), transformOrigin = TransformOrigin.Center) +
-                            expandVertically(tween(800, easing = FastOutSlowInEasing), expandFrom = Alignment.Top),
+                        scaleIn(tween(800, easing = FastOutSlowInEasing), transformOrigin = TransformOrigin.Center) +
+                        expandVertically(tween(800, easing = FastOutSlowInEasing), expandFrom = Alignment.Top),
                 exit = fadeOut(tween(1600, easing = FastOutSlowInEasing)) +
                         shrinkVertically(tween(1600, easing = FastOutSlowInEasing), shrinkTowards = Alignment.Top) +
                         scaleOut(tween(1600, easing = FastOutSlowInEasing), transformOrigin = TransformOrigin.Center)
@@ -562,19 +570,47 @@ private fun AuthenticatedPane(
 
             Spacer(Modifier.height(8.dp))
 
+            // CONTAINER MSGs
+            AnimatedVisibility(
+                visible = repoSelectedState,
+                enter = fadeIn(tween(800, easing = FastOutSlowInEasing)) +
+                        scaleIn(tween(800, easing = FastOutSlowInEasing), transformOrigin = TransformOrigin.Center) +
+                        expandVertically(tween(800, easing = FastOutSlowInEasing), expandFrom = Alignment.Top) +
+                        slideInVertically(tween(800, easing = FastOutSlowInEasing)) { fullHeight -> fullHeight },
+                exit = fadeOut(tween(1600, easing = FastOutSlowInEasing)) +
+                        shrinkVertically(tween(1600, easing = FastOutSlowInEasing), shrinkTowards = Alignment.Top) +
+                        scaleOut(tween(1600, easing = FastOutSlowInEasing), transformOrigin = TransformOrigin.Center) +
+                        slideOutVertically(tween(1600, easing = FastOutSlowInEasing))
+            ) {
+                LazyColumn(
+                    modifier = Modifier.fillMaxWidth().padding(12.dp).animateContentSize(),
+                    verticalArrangement = Arrangement.Bottom,
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    items(containerOutputs) { line ->
+                        Text(line, color = Color.LightGray, fontFamily = FontFamily.Monospace)
+                    }
+                }
+            }
+
             DynamicIslandWithLuxuryInput(
                 state = islandState,
                 value = query,
                 onValueChange = { query = it },
-                onSend = { query = TextFieldValue("") }
+                onSend = {
+                    val inputText = query.text
+                    query = TextFieldValue("")
+                    GlobalScope.launch { ws.sendContainerInput(inputText) }
+                }
             )
 
-            Spacer(Modifier.height(12.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(12.dp)) {
-                ModeChip("Compact") { islandState = IslandState.Default }
-                ModeChip("Split") { islandState = IslandState.Split }
-                ModeChip("FaceUnlock") { islandState = IslandState.FaceUnlock }
-            }
+            // TODO:  [ Split Mode ]  Audio recording mode ?
+//            Spacer(Modifier.height(12.dp))
+//            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(12.dp)) {
+//                ModeChip("Compact") { islandState = IslandState.Default }
+//                ModeChip("Split") { islandState = IslandState.Split }
+//                ModeChip("FaceUnlock") { islandState = IslandState.FaceUnlock }
+//            }
         }
     }
 }

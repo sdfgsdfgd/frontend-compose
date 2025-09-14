@@ -5,7 +5,6 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
@@ -22,30 +21,22 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.defaultMinSize
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.MaterialTheme
 import androidx.compose.material.Text
-import androidx.compose.material.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.innerShadow
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -61,14 +52,10 @@ import androidx.compose.ui.unit.lerp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.lerp
 import di.LocalDI
-import ui.GlassStyle
-import ui.glass
 import io.ktor.client.HttpClient
 import io.ktor.client.plugins.websocket.DefaultClientWebSocketSession
 import io.ktor.client.plugins.websocket.webSocketSession
-import io.ktor.websocket.CloseReason
 import io.ktor.websocket.Frame
-import io.ktor.websocket.close
 import io.ktor.websocket.readReason
 import io.ktor.websocket.readText
 import kotlinx.coroutines.CoroutineScope
@@ -89,7 +76,6 @@ import kotlinx.coroutines.flow.consumeAsFlow
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.jsonObject
@@ -105,7 +91,6 @@ import ui.login.model.ws.SyncUiState
 import ui.login.model.ws.WsMessage
 import java.util.UUID
 import kotlin.math.min
-import kotlin.math.abs
 import kotlin.random.Random
 import kotlin.time.Duration.Companion.seconds
 
@@ -121,7 +106,7 @@ fun WorkspaceSyncStatus(
     }
     val widthFraction by animateFloatAsState(
         targetValue = state.progress.coerceIn(0, 100) / 100f,
-        animationSpec = spring(stiffness = 200f, dampingRatio = 0.78f),
+        animationSpec = spring(stiffness = 50f, dampingRatio = 0.5f),
         label = "progressWidth"
     )
     val tint by animateColorAsState(
@@ -130,7 +115,6 @@ fun WorkspaceSyncStatus(
         label = "tint"
     )
 
-    // Crossfade the label to avoid jump cuts
     val label = statusLabel(state)
 
     Box(
@@ -167,9 +151,10 @@ fun WorkspaceSyncStatus(
 
 // ----- colors -----
 private fun scrimColorFor(status: SyncStatus): Color = when (status) {
-    is SyncStatus.Error -> Color(0xFF7F1D1D)    // red-900
-    SyncStatus.Synchronized -> Color(0xFF14532D) // green-900
-    else -> Color(0xFF1E3A8A)                   // blue-900
+    is SyncStatus.Error ->      Color.Red
+    SyncStatus.Syncing ->       Color.Yellow
+    SyncStatus.Synchronized ->  Color.Green
+    else ->                     Color.Blue
 }.copy(
     alpha = when (status) {
         is SyncStatus.Error -> 0.30f
@@ -178,7 +163,7 @@ private fun scrimColorFor(status: SyncStatus): Color = when (status) {
     }
 )
 
-// ----- modifier: draw the left-to-right tint like your absolute inset overlay -----
+// ----- modifier: draw the left-to-right tint like absolute inset overlay -----
 fun Modifier.progressScrim(fraction: Float, color: Color) = drawBehind {
     val w = size.width * fraction.coerceIn(0f, 1f)
     if (w > 0f) drawRect(color = color, size = Size(w, size.height))
@@ -227,9 +212,6 @@ class WsClient(
     private var session: DefaultClientWebSocketSession? = null
 
     private var reconnectJob: Job? = null
-
-    @Volatile
-    private var backoffMs = 500L // grows to 3_600_000L (1h)
 
     init {
         scope.launch { connectWithRetry() }
@@ -427,7 +409,9 @@ class WsClient(
 
     private suspend inline fun <reified T> send(payload: T) {
         val js = json.encodeToString(payload)
-        log("SEND", "${payload!!::class.simpleName ?: "payload"} ${js.length}B: ${js.substring(0..200)}}")
+        val preview = if (js.length > 200) js.substring(0..200) else js
+        log("SEND", "${payload!!::class.simpleName ?: "payload"} ${js.length}B: $preview")
+
         val s = session ?: run {
             log("ERROR", "send: no session")
             error("WS not connected")
