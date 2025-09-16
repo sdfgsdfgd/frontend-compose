@@ -210,6 +210,7 @@ class WsClient(
 
     @Volatile
     private var session: DefaultClientWebSocketSession? = null
+    @Volatile private var currentContainerMessageId: String? = null
 
     private var reconnectJob: Job? = null
 
@@ -330,30 +331,36 @@ class WsClient(
     }
 
     fun startContainerFlow(openaiApiKey: String? = null): Flow<ContainerResponse> = channelFlow {
-        val id = UUID.randomUUID().toString()
-        val msg = ContainerMessage(type = "arcana_start", messageId = id, openaiApiKey = openaiApiKey)
-        log("FLOW", "container start id=$id key=${openaiApiKey}")
+        val messageId = UUID.randomUUID().toString().also {
+            currentContainerMessageId = it
+        }
+        val msg = ContainerMessage(type = "arcana_start", messageId = messageId, openaiApiKey = openaiApiKey)
 
         val collector = launch {
             events.collect { ev ->
                 val c = (ev as? ServerEvent.Container)?.value ?: return@collect
-                if (c.messageId == id) trySend(c)
+                if (c.messageId == messageId) trySend(c)
             }
         }
 
         send(msg)
-        awaitClose { collector.cancel() }
+        awaitClose {
+            collector.cancel()
+            currentContainerMessageId = null
+        }
     }
 
     suspend fun sendContainerInput(text: String) {
+        val id = currentContainerMessageId ?: error("No active container session")
         val preview = text.replace("\n", "\\n").let { it.substring(0, min(200, it.length)) }
         log("SEND", "container_input ${text.length}B: $preview${if (text.length > 200) "…" else ""}")
-        send(ContainerMessage(type = "container_input", input = text))
+        send(ContainerMessage(type = "container_input", messageId = id, input = text))
     }
 
     suspend fun stopContainer() {
+        val id = currentContainerMessageId ?: error("No active container session")
         log("SEND", "container_stop")
-        send(ContainerMessage(type = "container_stop"))
+        send(ContainerMessage(type = "container_stop", messageId = id))
     }
 
     // -------- internals
