@@ -4,6 +4,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -25,7 +26,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -49,7 +49,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
@@ -193,6 +192,7 @@ private fun AuthenticatedPane(
 
     val islandState by rememberSaveable { mutableStateOf<IslandState>(IslandState.Default) }
     val listState = rememberLazyListState() // for scrolling control
+    val containerScrollState = rememberLazyListState()
     val focusRequester = remember { FocusRequester() }
     val ordered = remember(repos) { repos.sortedByDescending { Instant.parse(it.updatedAt) } } // Repos sorted by updatedAt descending
 
@@ -396,6 +396,7 @@ private fun AuthenticatedPane(
                                 repoSelectedState = false
                                 selectJob?.cancel()
                                 println("ESC: returning to repo list")
+                                focusRequester.requestFocus()
                                 true
                             } else false
                         }
@@ -429,15 +430,23 @@ private fun AuthenticatedPane(
                 val (indicator, syncBar) = createRefs()
 
                 Spacer(modifier = Modifier.height(32.dp))
-                // TODO:   28-30 Aug:
-                //          0. filter repos fuzzymatch  [DONE]
-                //          1. selection anims  [DONE]
-                //                 - - ^ done ^ - -
-                //                        --
-                //          2.  ENTER --> select repo --> Workspace details --> Workspace Sync Composable
-                //          3. Messaging ( around this time we Dolphin dive back into the Engine as well.
-                //                          Benchmark case, engine completion for kotlin-codebases, browsi capability etc.. )
-                //
+                // TODO:
+                //          1. filter repos fuzzymatch  [DONE]
+                //          2. selection anims  [DONE]
+                //          3.  ENTER --> select repo --> Workspace details --> Workspace Sync Composable  [ DONE ]
+                //          4. Messaging      [ DONE ]
+                //                  ( around this time we Dolphin dive back into the Engine as well )
+                //                     .
+                //          5.  Finalise messaging designs  &  comms I/O after engine modification for null-API-bypass like port knocking  [ WIP ]
+                //                       .
+                //                       .
+                //               !!  BACK TO THE DUNGEONS ! BACK TO THE ENGINE  !
+                //                       .
+                //          6.  - Benchmark case    [ WIP ]
+                //              - engine completion for kotlin-codebases
+                //              - browsi capability etc..
+                //              - Audio input / gRPC connections  through  client-backend-engine
+                //              - PR creation & desktop control & browse, daily use, memory extensions
                 //
                 AnimatedVisibility(
                     visible = repoSelectedState,
@@ -465,7 +474,7 @@ private fun AuthenticatedPane(
             }
         }
 
-        /* LEFT: list driven directly by `filtered` with fade-out on selection */
+        /* xx LEFT: list driven directly by `filtered` with fade-out on selection */
         AnimatedVisibility(
             visible = !repoSelectedState,
             modifier = Modifier
@@ -549,29 +558,41 @@ private fun AuthenticatedPane(
             }
         }
 
-        Column(
+        // xx   RIGHT: container output + input box, driven by `repoSelectedState`
+        val inputBias by animateFloatAsState(
+            targetValue = if (repoSelectedState) 1f else 0.62f,
+            animationSpec = tween(durationMillis = 600, easing = FastOutSlowInEasing)
+        )
+
+        ConstraintLayout(
             modifier = Modifier.constrainAs(bodyRight) {
-                top.linkTo(topBar.bottom, 12.dp)
+                top.linkTo(parent.top, 94.dp)
+                bottom.linkTo(parent.bottom, 24.dp)
                 start.linkTo(bodyLeft.end, 4.dp)
                 end.linkTo(parent.end, 12.dp)
-                bottom.linkTo(parent.bottom, 12.dp)
-            },
-            verticalArrangement = Arrangement.Center,
-            horizontalAlignment = Alignment.CenterHorizontally
+                height = Dimension.fillToConstraints
+                width = Dimension.fillToConstraints
+            }.animateContentSize()
         ) {
-            AnimatedContentVisibility(!repoSelectedState) {
-                NeonWelcome(auth.user)
-            }
+            val (welcome, messageList, input) = createRefs()
 
-            Spacer(Modifier.height(8.dp))
-
-            // xx     - CONTAINER MSGS -
-            AnimatedContentVisibility(repoSelectedState) {
+            AnimatedContentVisibility(
+                visible = repoSelectedState,
+                modifier = Modifier.constrainAs(messageList) {
+                    top.linkTo(parent.top, margin = 8.dp)
+                    bottom.linkTo(input.top, margin = 12.dp)
+                    start.linkTo(parent.start)
+                    end.linkTo(parent.end)
+                    height = Dimension.fillToConstraints
+                    width = Dimension.fillToConstraints
+                }
+            ) {
                 LazyColumn(
+                    state = containerScrollState,
                     modifier = Modifier
-                        .wrapContentSize()
-                        .padding(12.dp)
-                        .animateContentSize(),
+                        .fillMaxSize()
+                        .animateContentSize()
+                        .padding(horizontal = 12.dp),
                     verticalArrangement = Arrangement.Bottom,
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
@@ -579,13 +600,33 @@ private fun AuthenticatedPane(
                         Text(
                             text = line,
                             color = Color.LightGray,
-                            fontFamily = FontFamily.Monospace
+                            fontFamily = FontFamily.Monospace,
+                            modifier = Modifier.fillMaxWidth(),
+                            softWrap = true
                         )
                     }
                 }
             }
 
-            // xx    - INPUT -
+            AnimatedContentVisibility(
+                visible = !repoSelectedState,
+                modifier = Modifier.constrainAs(welcome) {
+                    top.linkTo(parent.top)
+                    bottom.linkTo(input.top, margin = 12.dp)
+                    start.linkTo(parent.start)
+                    end.linkTo(parent.end)
+                    width = Dimension.wrapContent
+                    height = Dimension.wrapContent
+                    verticalBias = 0.5f
+                }
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    NeonWelcome(auth.user)
+                }
+            }
+
             DynamicIslandWithLuxuryInput(
                 state = islandState,
                 value = query,
@@ -594,8 +635,23 @@ private fun AuthenticatedPane(
                     val inputText = query.text
                     query = TextFieldValue("")
                     GlobalScope.launch { ws.sendContainerInput(inputText) }
+                },
+                modifier = Modifier.constrainAs(input) {
+                    start.linkTo(parent.start)
+                    end.linkTo(parent.end)
+                    top.linkTo(parent.top)
+                    bottom.linkTo(parent.bottom)
+                    verticalBias = inputBias
+                    width = Dimension.fillToConstraints
                 }
             )
+
+            LaunchedEffect(containerOutputs.size) {
+                delay(250)
+                if (containerOutputs.isNotEmpty()) {
+                    containerScrollState.animateScrollToItem(containerOutputs.size - 1)
+                }
+            }
 
 // TODO:  [ Split Mode ]  Audio recording mode ?
 //            Spacer(Modifier.height(12.dp))
@@ -611,9 +667,11 @@ private fun AuthenticatedPane(
 @Composable
 fun AnimatedContentVisibility(
     visible: Boolean,
+    modifier: Modifier = Modifier,
     content: @Composable AnimatedVisibilityScope.() -> Unit
 ) {
     AnimatedVisibility(
+        modifier = modifier,
         visible = visible,
         enter = fadeIn(animationSpec = tween(800, easing = FastOutSlowInEasing)) +
                 scaleIn(
