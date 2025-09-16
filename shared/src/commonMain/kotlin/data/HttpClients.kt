@@ -66,7 +66,7 @@ object StandardClient {
     val J = Json {
         ignoreUnknownKeys = true
         explicitNulls = false
-        encodeDefaults = false
+        encodeDefaults = true
     }
 
     val http = HttpClient(CIO) {
