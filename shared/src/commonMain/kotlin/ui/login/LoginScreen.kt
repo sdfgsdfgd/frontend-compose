@@ -444,9 +444,9 @@ private fun AuthenticatedPane(
                 //                       .
                 //          6.  - Benchmark case    [ WIP ]
                 //              - engine completion for kotlin-codebases
-                //              - browsi capability etc..
+                //              - browsi capability, infinite browsing
                 //              - Audio input / gRPC connections  through  client-backend-engine
-                //              - PR creation & desktop control & browse, daily use, memory extensions
+                //              - PR creation & desktop control & browse, daily use, memory interfaces (+active frgttng)
                 //
                 AnimatedVisibility(
                     visible = repoSelectedState,
