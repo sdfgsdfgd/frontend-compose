@@ -1,4 +1,4 @@
-package ui.login.model.ws
+package data.model
 
 import androidx.compose.runtime.Immutable
 import kotlinx.serialization.Serializable

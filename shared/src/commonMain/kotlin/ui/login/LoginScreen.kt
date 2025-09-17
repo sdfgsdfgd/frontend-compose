@@ -86,7 +86,6 @@ import kotlinx.datetime.format.char
 import kotlinx.datetime.toLocalDateTime
 import platform.BrowserLauncher
 import platform.LocalPlatformContext
-import ui.DynamicIslandWithLuxuryInput
 import ui.GlassCard
 import ui.GlassStyle
 import ui.GlassTopBar
@@ -94,10 +93,11 @@ import ui.GoldUnicode
 import ui.IslandState
 import ui.SkeuoButton
 import ui.SkeuoText
+import ui.components.DynamicIslandWithLuxuryInput
 import ui.login.model.AuthState
-import ui.login.model.ws.GitHubRepoData
-import ui.login.model.ws.SyncStatus
-import ui.login.model.ws.SyncUiState
+import data.model.GitHubRepoData
+import data.model.SyncStatus
+import data.model.SyncUiState
 import kotlin.math.abs
 
 @Composable

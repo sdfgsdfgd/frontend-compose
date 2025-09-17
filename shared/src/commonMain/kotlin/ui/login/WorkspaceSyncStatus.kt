@@ -80,15 +80,15 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
-import ui.login.model.ws.ContainerMessage
-import ui.login.model.ws.ContainerResponse
-import ui.login.model.ws.GitHubRepoData
-import ui.login.model.ws.GitHubRepoSelectMessage
-import ui.login.model.ws.GitHubRepoSelectResponse
-import ui.login.model.ws.ServerEvent
-import ui.login.model.ws.SyncStatus
-import ui.login.model.ws.SyncUiState
-import ui.login.model.ws.WsMessage
+import data.model.ContainerMessage
+import data.model.ContainerResponse
+import data.model.GitHubRepoData
+import data.model.GitHubRepoSelectMessage
+import data.model.GitHubRepoSelectResponse
+import data.model.ServerEvent
+import data.model.SyncStatus
+import data.model.SyncUiState
+import data.model.WsMessage
 import java.util.UUID
 import kotlin.math.min
 import kotlin.random.Random
@@ -320,13 +320,15 @@ class WsClient(
             }
         }
 
-        send(GitHubRepoSelectMessage(
+        send(
+            GitHubRepoSelectMessage(
             type = "workspace_select_github",
             messageId = id,
             repoData = repo,
             accessToken = accessToken,
             clientTimestamp = System.currentTimeMillis()
-        ))
+        )
+        )
         awaitClose { collector.cancel() }
     }
 
